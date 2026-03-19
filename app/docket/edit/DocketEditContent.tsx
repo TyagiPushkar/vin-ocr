@@ -808,7 +808,7 @@ const DocketEditContent = () => {
                     <input
                       type="checkbox"
                       checked={formData.shipmentType.toLowerCase() === type.toLowerCase().replace('-', '')}
-                      onChange={() => handleFieldChange('shipmentType', type === 'DOX' ? 'DOX' : 'nondox')}
+                      onChange={() => handleFieldChange('shipmentType', type === 'DOX' ? 'DOX' : 'Non-DOX')}
                       className="mr-2 h-5 w-5 accent-[#002d62]"
                     />
                     <span className="font-semibold">{type}</span>
