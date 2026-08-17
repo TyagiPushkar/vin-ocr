@@ -6,14 +6,14 @@ import { useAuth } from '@/lib/auth-context';
 import { useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import Tesseract from 'tesseract.js';
-import { 
-  Phone, 
-  User, 
-  MapPin, 
-  Calendar, 
-  Truck, 
-  Package, 
-  FileText, 
+import {
+  Phone,
+  User,
+  MapPin,
+  Calendar,
+  Truck,
+  Package,
+  FileText,
   Camera,
   X,
   Plus,
@@ -85,7 +85,7 @@ export default function AddDocketPage() {
     ConsignorPincode: '',
   });
   const [loadingConsignors, setLoadingConsignors] = useState(true);
-  
+
   const [formData, setFormData] = useState({
     consigneeName: '',
     consigneeMobile: '',
@@ -131,7 +131,7 @@ export default function AddDocketPage() {
   useEffect(() => {
     setMounted(true);
     fetchConsignors();
-    
+
     // Set today's date for pickup date default
     const today = new Date().toISOString().slice(0, 16);
     setFormData(prev => ({ ...prev, pickupDate: today }));
@@ -142,7 +142,7 @@ export default function AddDocketPage() {
       setLoadingConsignors(true);
       const response = await fetch('https://namami-infotech.com/vinworld/src/consignor/get_consignor.php');
       const data = await response.json();
-      
+
       if (data.success && data.data) {
         // Filter only active consignors (status === 1)
         const activeConsignors = data.data.filter((c: Consignor) => c.status === 1);
@@ -158,7 +158,7 @@ export default function AddDocketPage() {
   const handleConsignorChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setSelectedConsignor(value);
-    
+
     if (value !== 'manual') {
       const consignor = consignors.find(c => c.id.toString() === value);
       if (consignor) {
@@ -213,7 +213,7 @@ export default function AddDocketPage() {
 
   const addShipment = () => {
     if (shipmentForm.actualWeight && shipmentForm.noOfBox) {
-      setShipments([...shipments, { 
+      setShipments([...shipments, {
         id: Date.now(),
         boxType: shipmentForm.boxType,
         length: shipmentForm.length,
@@ -224,7 +224,7 @@ export default function AddDocketPage() {
         description: BOX_TYPES[shipmentForm.boxType].label
       }]);
       // Reset form but keep box type as Small
-      setShipmentForm({ 
+      setShipmentForm({
         boxType: 'Small',
         length: 10,
         width: 10,
@@ -271,7 +271,7 @@ export default function AddDocketPage() {
 
     // Store the captured image
     setCapturedImage(file);
-    
+
     // Create image preview
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -312,7 +312,7 @@ export default function AddDocketPage() {
   const parseAndFillAddress = (text: string) => {
     const pincodeMatch = text.match(/\b\d{6}\b/);
     const mobileMatch = text.match(/\b\d{10}\b/);
-    
+
     // Simple name extraction (first line or capitalized words)
     const lines = text.split('\n').filter(line => line.trim());
     const nameMatch = lines[0] || "";
@@ -325,6 +325,145 @@ export default function AddDocketPage() {
       consigneeMobile: mobileMatch?.[0] || "",
     }));
   };
+
+  // File/Blob ko Base64 String me convert karne ke liye helper
+  const convertBase64 = (file: File | Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const fileReader = new FileReader();
+      fileReader.readAsDataURL(file);
+      fileReader.onload = () => {
+        const result = fileReader.result as string;
+        // "data:image/jpeg;base64," prefix ko hata kar sirf base64 string pass karenge
+        const base64String = result.includes(',') ? result.split(',')[1] : result;
+        resolve(base64String);
+      };
+      fileReader.onerror = (error) => reject(error);
+    });
+  };
+
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   setError('');
+  //   setSuccess('');
+
+  //   // Validate consignor based on selection
+  //   if (selectedConsignor === 'manual') {
+  //     const requiredConsignorFields = ['ConsignorName', 'ConsignorMobile', 'ConsignorAddress'];
+  //     for (const field of requiredConsignorFields) {
+  //       if (!manualConsignor[field as keyof ConsignorData]) {
+  //         setError(`Consignor ${field.replace('Consignor', '')} is required for manual entry`);
+  //         return;
+  //       }
+  //     }
+  //   }
+
+  //   const required = [
+  //     'consigneeName', 'consigneeMobile', 'consigneeAddress',
+  //     'origin', 'destination', 'pickupEmployee'
+  //   ];
+
+  //   for (const field of required) {
+  //     if (!formData[field as keyof typeof formData]) {
+  //       setError(`${field.replace(/([A-Z])/g, ' $1')} is required`);
+  //       return;
+  //     }
+  //   }
+
+  //   if (shipments.length === 0) {
+  //     setError('Please add at least one shipment');
+  //     return;
+  //   }
+
+  //   setLoading(true);
+
+  //   try {
+  //     // Get today's date for shipDate
+  //     const today = new Date().toISOString().split('T')[0];
+
+  //     // Use selected consignor or manual entry
+  //     const consignorData = selectedConsignor !== 'manual'
+  //       ? consignors.find(c => c.id.toString() === selectedConsignor)
+  //       : null;
+
+  //     // Create FormData object for multipart/form-data
+  //     const formDataObj = new FormData();
+
+  //     // Add all the data as JSON string
+  //     const payload = {
+  //       consignor: {
+  //         id: selectedConsignor !== 'manual' ? parseInt(selectedConsignor) : null,
+  //         name: selectedConsignor !== 'manual' ? consignorData?.name || '' : manualConsignor.ConsignorName,
+  //         address: selectedConsignor !== 'manual' ? consignorData?.address || '' : manualConsignor.ConsignorAddress,
+  //         district: selectedConsignor !== 'manual' ? consignorData?.district || '' : manualConsignor.ConsignorDistrict,
+  //         state: selectedConsignor !== 'manual' ? consignorData?.state || '' : manualConsignor.ConsignorState,
+  //         pincode: selectedConsignor !== 'manual' ? consignorData?.pincode || '' : manualConsignor.ConsignorPincode,
+  //         mobile: selectedConsignor !== 'manual' ? consignorData?.phone || '' : manualConsignor.ConsignorMobile,
+  //       },
+  //       consignee: {
+  //         name: formData.consigneeName,
+  //         address: formData.consigneeAddress,
+  //         district: formData.consigneeDistrict,
+  //         state: formData.consigneeState,
+  //         pincode: formData.consigneePincode,
+  //         mobile: formData.consigneeMobile,
+  //       },
+  //       shipDate: today,
+  //       origin: formData.origin,
+  //       destination: formData.destination,
+  //       modeOfTransport: formData.modeOfTransport,
+  //       invoiceRequired: formData.invoiceRequired,
+  //       invoiceNumber: formData.invoiceNumber || '',
+  //       invoiceValue: formData.invoiceValue ? parseFloat(formData.invoiceValue) : 0,
+  //       shipmentType: formData.shipmentType,
+  //       pickupDate: formData.pickupDate,
+  //       pickupEmployee: formData.pickupEmployee,
+  //       ewayBillNo: formData.ewayBillNo || '',
+  //       locationId: user?.LocationId || 1,
+  //       shipments: shipments.map(s => ({
+  //         length: s.length,
+  //         width: s.width,
+  //         height: s.height,
+  //         actualWeight: s.actualWeight,
+  //         noOfBox: s.noOfBox,
+  //         boxType: s.boxType
+  //       }))
+  //     };
+
+  //     // Add the payload as JSON string
+  //     formDataObj.append('data', JSON.stringify(payload));
+
+  //     // Add the image if captured
+  //     if (capturedImage) {
+  //       formDataObj.append('image', capturedImage);
+  //     }
+
+  //     //console the l0g
+  //     // console.log('Payload:', payload);
+
+  //     // for (const [key, value] of formDataObj.entries()) {
+  //     //   console.log(key, value);
+  //     // }
+
+  //     const response = await fetch('https://namami-infotech.com/vinworld/src/docket/add_docket.php', {
+  //       method: 'POST',
+  //       body: formDataObj, // Don't set Content-Type header, browser will set it with boundary
+  //     });
+
+  //     const data = await response.json();
+
+  //     if (data.success) {
+  //       setSuccess('Docket created successfully!');
+  //       setTimeout(() => router.push('/dashboard'), 2000);
+  //     } else {
+  //       setError(data.message || 'Failed to create docket');
+  //     }
+  //   } catch (err) {
+  //     console.error(err);
+  //     setError('Network error. Please try again.');
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -362,18 +501,23 @@ export default function AddDocketPage() {
     setLoading(true);
 
     try {
-      // Get today's date for shipDate
       const today = new Date().toISOString().split('T')[0];
 
-      // Use selected consignor or manual entry
-      const consignorData = selectedConsignor !== 'manual' 
+      const consignorData = selectedConsignor !== 'manual'
         ? consignors.find(c => c.id.toString() === selectedConsignor)
         : null;
 
-      // Create FormData object for multipart/form-data
-      const formDataObj = new FormData();
+      // 1. Image ko Base64 string mein convert karein
+      let imageBase64: string | null = null;
+      if (capturedImage) {
+        if (typeof capturedImage === 'string') {
+          imageBase64 = capturedImage.includes(',') ? capturedImage.split(',')[1] : capturedImage;
+        } else {
+          imageBase64 = await convertBase64(capturedImage);
+        }
+      }
 
-      // Add all the data as JSON string
+      // 2. Pure Payload Object taiyar karein
       const payload = {
         consignor: {
           id: selectedConsignor !== 'manual' ? parseInt(selectedConsignor) : null,
@@ -404,6 +548,7 @@ export default function AddDocketPage() {
         pickupEmployee: formData.pickupEmployee,
         ewayBillNo: formData.ewayBillNo || '',
         locationId: user?.LocationId || 1,
+        image_base64: imageBase64, // Backend dwara required key
         shipments: shipments.map(s => ({
           length: s.length,
           width: s.width,
@@ -414,17 +559,13 @@ export default function AddDocketPage() {
         }))
       };
 
-      // Add the payload as JSON string
-      formDataObj.append('data', JSON.stringify(payload));
-
-      // Add the image if captured
-      if (capturedImage) {
-        formDataObj.append('image', capturedImage);
-      }
-
+      // 3. Direct JSON Body & Application/JSON Headers bhejien (FormData hatayein)
       const response = await fetch('https://namami-infotech.com/vinworld/src/docket/add_docket.php', {
         method: 'POST',
-        body: formDataObj, // Don't set Content-Type header, browser will set it with boundary
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -574,15 +715,15 @@ export default function AddDocketPage() {
                   <div className="font-semibold text-[#002d62]">{formData.consigneeAddress || 'Not provided'}</div>
                 </div>
               </div>
-              
+
               {/* Image Preview */}
               {imagePreview && (
                 <div className="mt-3">
                   <span className="text-gray-600 text-sm">Captured Image:</span>
                   <div className="mt-2 relative">
-                    <img 
-                      src={imagePreview} 
-                      alt="Captured consignee address" 
+                    <img
+                      src={imagePreview}
+                      alt="Captured consignee address"
                       className="max-h-40 rounded-lg border border-gray-200"
                     />
                   </div>
@@ -693,7 +834,7 @@ export default function AddDocketPage() {
             {/* Consignor Section - Dropdown with manual option */}
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
               <SectionHeader icon={Building2} title="Select Consignor" />
-              
+
               <div className="mb-6">
                 <label className="text-sm font-semibold text-[#002d62] block mb-2">
                   Choose Consignor *
@@ -819,7 +960,7 @@ export default function AddDocketPage() {
                   <div className="text-sm text-[#f7931d] animate-pulse">Processing...</div>
                 )}
               </div>
-              
+
               <input
                 type="file"
                 accept="image/*"
@@ -830,13 +971,12 @@ export default function AddDocketPage() {
                 disabled={ocrLoading}
                 ref={fileInputRef}
               />
-              
+
               {!imagePreview ? (
                 <label
                   htmlFor="ocr-upload"
-                  className={`block w-full py-3 px-4 text-center rounded-lg border-2 border-dashed ${
-                    ocrLoading ? 'border-gray-300 bg-gray-100' : 'border-[#f7931d] bg-[#f7931d]/5 hover:bg-[#f7931d]/10 cursor-pointer transition'
-                  }`}
+                  className={`block w-full py-3 px-4 text-center rounded-lg border-2 border-dashed ${ocrLoading ? 'border-gray-300 bg-gray-100' : 'border-[#f7931d] bg-[#f7931d]/5 hover:bg-[#f7931d]/10 cursor-pointer transition'
+                    }`}
                 >
                   {ocrLoading ? (
                     <div className="flex items-center justify-center gap-2">
@@ -853,9 +993,9 @@ export default function AddDocketPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="relative">
-                    <img 
-                      src={imagePreview} 
-                      alt="Captured" 
+                    <img
+                      src={imagePreview}
+                      alt="Captured"
                       className="w-full max-h-48 object-contain rounded-lg border border-gray-200"
                     />
                     <button
@@ -1120,7 +1260,7 @@ export default function AddDocketPage() {
             {/* Shipments Section */}
             <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
               <SectionHeader icon={Package} title="Add Shipments" />
-              
+
               {shipments.length > 0 && (
                 <div className="mb-6 space-y-3">
                   {shipments.map((shipment) => (
@@ -1168,7 +1308,7 @@ export default function AddDocketPage() {
                       ))}
                     </select>
                   </div>
-                  
+
                   {shipmentForm.boxType === 'Other' && (
                     <>
                       <div className="space-y-2">
@@ -1176,7 +1316,7 @@ export default function AddDocketPage() {
                         <input
                           type="number"
                           value={shipmentForm.length || ''}
-                          onChange={(e) => setShipmentForm({...shipmentForm, length: parseFloat(e.target.value) || 0})}
+                          onChange={(e) => setShipmentForm({ ...shipmentForm, length: parseFloat(e.target.value) || 0 })}
                           placeholder="Length"
                           min="1"
                           step="0.1"
@@ -1188,7 +1328,7 @@ export default function AddDocketPage() {
                         <input
                           type="number"
                           value={shipmentForm.width || ''}
-                          onChange={(e) => setShipmentForm({...shipmentForm, width: parseFloat(e.target.value) || 0})}
+                          onChange={(e) => setShipmentForm({ ...shipmentForm, width: parseFloat(e.target.value) || 0 })}
                           placeholder="Width"
                           min="1"
                           step="0.1"
@@ -1200,7 +1340,7 @@ export default function AddDocketPage() {
                         <input
                           type="number"
                           value={shipmentForm.height || ''}
-                          onChange={(e) => setShipmentForm({...shipmentForm, height: parseFloat(e.target.value) || 0})}
+                          onChange={(e) => setShipmentForm({ ...shipmentForm, height: parseFloat(e.target.value) || 0 })}
                           placeholder="Height"
                           min="1"
                           step="0.1"
@@ -1209,26 +1349,26 @@ export default function AddDocketPage() {
                       </div>
                     </>
                   )}
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-[#002d62]">Weight (kg) *</label>
                     <input
                       type="number"
                       value={shipmentForm.actualWeight}
-                      onChange={(e) => setShipmentForm({...shipmentForm, actualWeight: e.target.value})}
+                      onChange={(e) => setShipmentForm({ ...shipmentForm, actualWeight: e.target.value })}
                       placeholder="0.00"
                       min="0"
                       step="0.01"
                       className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-[#002d62]">Quantity *</label>
                     <input
                       type="number"
                       value={shipmentForm.noOfBox}
-                      onChange={(e) => setShipmentForm({...shipmentForm, noOfBox: e.target.value})}
+                      onChange={(e) => setShipmentForm({ ...shipmentForm, noOfBox: e.target.value })}
                       placeholder="1"
                       min="1"
                       className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"

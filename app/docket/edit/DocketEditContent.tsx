@@ -102,7 +102,7 @@ const DocketEditContent = () => {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const docketNo = searchParams.get('docketNo');
-  
+
   const [docket, setDocket] = useState<ApiDocketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -189,14 +189,15 @@ const DocketEditContent = () => {
       const response = await fetch(
         `https://namami-infotech.com/vinworld/src/docket/get_docket.php?locationId=${user?.LocationId}&search=${docketNumber}`
       );
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch docket data');
       }
-      
+
       const result: ApiResponse = await response.json();
-      
+
       if (result.success && result.data && result.data.length > 0) {
+        console.log(result.data[0]);
         setDocket(result.data[0]);
       } else {
         throw new Error('No docket data found');
@@ -296,7 +297,7 @@ const DocketEditContent = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -350,7 +351,7 @@ const DocketEditContent = () => {
       // Create form data for API
       const formDataToSend = new FormData();
       formDataToSend.append('data', JSON.stringify(payload));
-      
+
       if (selectedImage) {
         formDataToSend.append('image', selectedImage);
       }
@@ -365,12 +366,12 @@ const DocketEditContent = () => {
 
       if (result.success) {
         setSuccessMessage('Docket updated successfully!');
-        
+
         // Refresh docket data
         if (docket?.DocketNo) {
           fetchDocketData(docket.DocketNo);
         }
-        
+
         // Clear success message after 3 seconds
         setTimeout(() => {
           setSuccessMessage(null);
@@ -437,8 +438,8 @@ const DocketEditContent = () => {
   }, 0);
 
   return (
-      <div className="min-h-screen bg-gray-100">
-          <DashboardHeader />
+    <div className="min-h-screen bg-gray-100">
+      <DashboardHeader />
       {/* Mobile Header */}
       <div className="lg:hidden sticky top-0 z-50 bg-[#002d62] text-white">
         <div className="flex items-center justify-between p-4">
@@ -448,12 +449,12 @@ const DocketEditContent = () => {
           >
             {showMobileMenu ? <X size={24} /> : <Menu size={24} />}
           </button>
-          
+
           <div className="text-center">
             <div className="font-bold">Edit Docket #{docket.DocketNo}</div>
             <div className="text-xs opacity-75">Edit Mode</div>
           </div>
-          
+
           <div className="w-10"></div>
         </div>
 
@@ -497,7 +498,7 @@ const DocketEditContent = () => {
               <ArrowLeft size={20} />
               Cancel Edit
             </button>
-            
+
             <div className="flex gap-3">
               <button
                 onClick={() => router.push(`/docket/view?docketNo=${docket.DocketNo}`)}
@@ -548,7 +549,7 @@ const DocketEditContent = () => {
             {successMessage}
           </div>
         )}
-        
+
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
             {error}
@@ -558,9 +559,9 @@ const DocketEditContent = () => {
         <form onSubmit={handleSubmit} className="bg-white p-4 md:p-6 lg:p-8 rounded-lg shadow-lg border">
           {/* Company Header */}
           <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-            <img 
-              src="https://vinworldexpress.com/assets/img/resource/logo-4.png" 
-              alt="VIN WORLD Logo" 
+            <img
+              src="https://vinworldexpress.com/assets/img/resource/logo-4.png"
+              alt="VIN WORLD Logo"
               className="h-20"
             />
             <div className="text-center">
@@ -607,7 +608,7 @@ const DocketEditContent = () => {
                 placeholder="Enter origin"
               />
             </div>
-            
+
             <div>
               <h3 className="text-lg font-bold text-gray-800 mb-3">Destination:</h3>
               <input
@@ -637,7 +638,7 @@ const DocketEditContent = () => {
                     className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-[#002d62]"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
                     Mobile:
@@ -649,7 +650,7 @@ const DocketEditContent = () => {
                     className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-[#002d62]"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
                     Address:
@@ -661,7 +662,7 @@ const DocketEditContent = () => {
                     className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-[#002d62]"
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -686,7 +687,7 @@ const DocketEditContent = () => {
                     />
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
                     Pincode:
@@ -716,7 +717,7 @@ const DocketEditContent = () => {
                     className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-[#002d62]"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
                     Mobile:
@@ -728,7 +729,7 @@ const DocketEditContent = () => {
                     className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-[#002d62]"
                   />
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
                     Address:
@@ -740,7 +741,7 @@ const DocketEditContent = () => {
                     className="w-full border border-gray-300 p-2 rounded focus:outline-none focus:border-[#002d62]"
                   />
                 </div>
-                
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">
@@ -765,7 +766,7 @@ const DocketEditContent = () => {
                     />
                   </div>
                 </div>
-                
+
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">
                     Pincode:
@@ -802,12 +803,25 @@ const DocketEditContent = () => {
 
             <div>
               <h3 className="text-lg font-bold text-gray-800 mb-3">Type:</h3>
-              <div className="flex flex-wrap gap-6">
+              {/* <div className="flex flex-wrap gap-6">
                 {['DOX', 'Non-DOX'].map((type) => (
                   <label key={type} className="flex items-center">
                     <input
                       type="checkbox"
                       checked={formData.shipmentType.toLowerCase() === type.toLowerCase().replace('-', '')}
+                      onChange={() => handleFieldChange('shipmentType', type === 'DOX' ? 'DOX' : 'Non-DOX')}
+                      className="mr-2 h-5 w-5 accent-[#002d62]"
+                    />
+                    <span className="font-semibold">{type}</span>
+                  </label>
+                ))}
+              </div> */}
+              <div className="flex flex-wrap gap-6">
+                {['DOX', 'Non-DOX'].map((type) => (
+                  <label key={type} className="flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.shipmentType?.toLowerCase() === type.toLowerCase()}
                       onChange={() => handleFieldChange('shipmentType', type === 'DOX' ? 'DOX' : 'Non-DOX')}
                       className="mr-2 h-5 w-5 accent-[#002d62]"
                     />
@@ -821,7 +835,7 @@ const DocketEditContent = () => {
           {/* Pickup Details */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-1">
+              {/* <label className="block text-sm font-bold text-gray-700 mb-1">
                 Pickup Date:
               </label>
               <input
@@ -829,9 +843,32 @@ const DocketEditContent = () => {
                 value={formData.pickupDate}
                 onChange={(e) => handleFieldChange('pickupDate', e.target.value)}
                 className="w-full border border-gray-300 p-3 rounded focus:outline-none focus:border-[#002d62]"
+              /> */}
+              <label className="block text-sm font-bold text-gray-700 mb-1">
+                Pickup Date:
+              </label>
+              {/* <input
+                type="date"
+                value={
+                  formData.pickupDate
+                    ? new Date(formData.pickupDate).toISOString().split('T')[0]
+                    : ''
+                }
+                onChange={(e) => handleFieldChange('pickupDate', e.target.value)}
+                className="w-full border border-gray-300 p-3 rounded focus:outline-none focus:border-[#002d62]"
+              /> */}
+              <input
+                type="date"
+                value={
+                  formData.pickupDate
+                    ? formData.pickupDate.split(' ')[0]
+                    : ''
+                }
+                onChange={(e) => handleFieldChange('pickupDate', e.target.value)}
+                className="w-full border border-gray-300 p-3 rounded focus:outline-none focus:border-[#002d62]"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">
                 Pickup Employee:
@@ -858,7 +895,7 @@ const DocketEditContent = () => {
                 className="w-full border border-gray-300 p-3 rounded focus:outline-none focus:border-[#002d62]"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">
                 Invoice Number:
@@ -870,7 +907,7 @@ const DocketEditContent = () => {
                 className="w-full border border-gray-300 p-3 rounded focus:outline-none focus:border-[#002d62]"
               />
             </div>
-            
+
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">
                 Invoice Value (₹):
@@ -1023,7 +1060,7 @@ const DocketEditContent = () => {
                 {totalWeight.toFixed(2)} kg
               </div>
             </div>
-            
+
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-1">
                 R/T Receiver Name:
@@ -1038,16 +1075,16 @@ const DocketEditContent = () => {
           <div className="border-t-2 border-[#002d62] pt-6 mt-8">
             <div className="text-sm text-gray-700 space-y-2">
               <p>
-                We hereby agree to the terms & conditions printed at the backside of this 
+                We hereby agree to the terms & conditions printed at the backside of this
                 agreement of carriage and to the Charged Services Charges.
               </p>
               <p>
-                I/We declare that information provided by me/us for the preparation of this 
-                agreement of this carriage is true and correct. Actual sizes of volumetric 
+                I/We declare that information provided by me/us for the preparation of this
+                agreement of this carriage is true and correct. Actual sizes of volumetric
                 packages are mentioned overleaf.
               </p>
             </div>
-            
+
             <div className="mt-6 text-center text-lg font-bold text-red-600">
               NON NEGOTIABLE AT OWNER'S RISK
             </div>
