@@ -528,7 +528,19 @@ export const transformDocketsToMasterRows = (dockets: FullDocket[]): MasterSheet
   const rows: MasterSheetRow[] = [];
   let srCounter = 1;
 
-  dockets.forEach((docket) => {
+  // Sort dockets chronologically: Oldest (From Date) at top -> Current/Newest (To Date) at bottom
+  const sortedDockets = [...dockets].sort((a, b) => {
+    const dateA = a.ShipDate || (a.CreatedAt ? a.CreatedAt.split(' ')[0] : '');
+    const dateB = b.ShipDate || (b.CreatedAt ? b.CreatedAt.split(' ')[0] : '');
+    if (dateA && dateB && dateA !== dateB) {
+      return dateA.localeCompare(dateB);
+    }
+    const createdA = a.CreatedAt ? new Date(a.CreatedAt).getTime() : (a.Id || 0);
+    const createdB = b.CreatedAt ? new Date(b.CreatedAt).getTime() : (b.Id || 0);
+    return createdA - createdB;
+  });
+
+  sortedDockets.forEach((docket) => {
     const formattedDate = formatDateDisplay(docket.ShipDate, '/');
     const formattedDeliveryDate = docket.DeliveryDate ? formatDateDisplay(docket.DeliveryDate, '-') : '';
 

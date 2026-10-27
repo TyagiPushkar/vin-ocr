@@ -369,9 +369,15 @@ export default function DashboardPage() {
                   <input
                     type="date"
                     value={fromDate}
+                    max={toDate || undefined}
                     onChange={(e) => {
-                      setFromDate(e.target.value);
+                      const val = e.target.value;
+                      setFromDate(val);
                       setDateFilter('custom');
+                      // If From Date is greater than To Date, update To Date to match
+                      if (toDate && val && val > toDate) {
+                        setToDate(val);
+                      }
                     }}
                     className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-[#f7931d]"
                   />
@@ -386,9 +392,15 @@ export default function DashboardPage() {
                   <input
                     type="date"
                     value={toDate}
+                    min={fromDate || undefined}
                     onChange={(e) => {
-                      setToDate(e.target.value);
+                      const val = e.target.value;
+                      setToDate(val);
                       setDateFilter('custom');
+                      // If To Date is less than From Date, update From Date to match
+                      if (fromDate && val && val < fromDate) {
+                        setFromDate(val);
+                      }
                     }}
                     className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-[#f7931d]"
                   />
