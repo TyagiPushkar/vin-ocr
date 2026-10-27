@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, MapPin, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { MasterSheetRow } from '@/lib/excel-export';
 
 interface MasterSheetTableProps {
@@ -95,8 +95,10 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
               </th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">CONSIGNOR</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">CONSIGNEE</th>
-              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">MODE</th>
-              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">Road/Air</th>
+              <th className="px-3 py-2 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">
+                <div>MODE</div>
+                <div className="text-[10px] text-blue-200 font-normal">Road/Air</div>
+              </th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">ORIGIN</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] min-w-[240px]">DESTINATION</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">DISTRICT</th>
@@ -158,7 +160,7 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
 
                 {/* CONSIGNOR */}
                 <td className="px-3 py-2.5 text-gray-800 font-medium border-r border-gray-200 whitespace-nowrap">
-                  {row.consignor || '-'}
+                  {(row.consignor || '').replace(/\s*\([^)]*\)/g, '').trim() || '-'}
                 </td>
 
                 {/* CONSIGNEE */}
@@ -166,18 +168,13 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
                   {row.consignee || '-'}
                 </td>
 
-                {/* MODE */}
-                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap">
-                  <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                    row.mode === 'AIR' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
+                {/* MODE (Road/Air) */}
+                <td className="px-3 py-2.5 text-center border-r border-gray-200 whitespace-nowrap">
+                  <span className={`px-2.5 py-1 rounded text-[11px] font-bold ${
+                    (row.roadAir || row.mode) === 'AIR' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
                   }`}>
-                    {row.mode || 'ROAD'}
+                    {row.roadAir || row.mode || 'ROAD'}
                   </span>
-                </td>
-
-                {/* Road/Air */}
-                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap font-medium">
-                  {row.roadAir || row.mode || 'ROAD'}
                 </td>
 
                 {/* ORIGIN */}
@@ -187,19 +184,13 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
 
                 {/* DESTINATION */}
                 <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 min-w-[240px]">
-                  <div className="flex items-start gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-gray-400 mt-0.5 flex-shrink-0" />
-                    <span 
-                      className={`line-clamp-2 ${row.rawDocket?.image_url ? 'cursor-pointer hover:text-[#f7931d] hover:underline' : ''}`}
-                      onClick={() => row.rawDocket?.image_url && setSelectedImage(row.rawDocket.image_url)}
-                      title={row.destination}
-                    >
-                      {row.destination || '-'}
-                    </span>
-                    {row.rawDocket?.image_url && (
-                      <ImageIcon className="w-3 h-3 text-[#f7931d] flex-shrink-0 mt-0.5" />
-                    )}
-                  </div>
+                  <span 
+                    className={`line-clamp-2 ${row.rawDocket?.image_url ? 'cursor-pointer hover:text-[#f7931d]' : ''}`}
+                    onClick={() => row.rawDocket?.image_url && setSelectedImage(row.rawDocket.image_url)}
+                    title={row.destination}
+                  >
+                    {row.destination || '-'}
+                  </span>
                 </td>
 
                 {/* DISTRICT */}

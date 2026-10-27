@@ -15,6 +15,8 @@ import {
   Calendar, 
   ChevronLeft, 
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Home,
   X, 
   Download,
@@ -27,7 +29,8 @@ import {
   MasterSheetRow, 
   transformDocketsToMasterRows, 
   exportToExcel, 
-  exportToCSV 
+  exportToCSV,
+  compareDockets
 } from '@/lib/excel-export';
 
 export default function DashboardPage() {
@@ -146,6 +149,7 @@ export default function DashboardPage() {
         (d.DocketNo && d.DocketNo.toLowerCase().includes(query)) ||
         (d.ConsignorName && d.ConsignorName.toLowerCase().includes(query)) ||
         (d.ConsigneeName && d.ConsigneeName.toLowerCase().includes(query)) ||
+        (d.ConsignorAddress && d.ConsignorAddress.toLowerCase().includes(query)) ||
         (d.ConsigneeAddress && d.ConsigneeAddress.toLowerCase().includes(query)) ||
         (d.Origin && d.Origin.toLowerCase().includes(query)) ||
         (d.Destination && d.Destination.toLowerCase().includes(query)) ||
@@ -157,13 +161,16 @@ export default function DashboardPage() {
       );
     }
 
+    // Ensure filtered dockets are sorted latest first (for UI view)
+    filtered.sort((a, b) => compareDockets(b, a));
+
     setFilteredDockets(filtered);
     setCurrentPage(1);
   }, [dockets, statusFilter, fromDate, toDate, searchQuery]);
 
-  // Transform filtered dockets to Master Sheet rows
+  // Transform filtered dockets to Master Sheet rows (latest first on top for UI)
   const allMasterRows = useMemo(() => {
-    return transformDocketsToMasterRows(filteredDockets);
+    return transformDocketsToMasterRows(filteredDockets, 'desc');
   }, [filteredDockets]);
 
   // Pagination calculations
@@ -180,12 +187,13 @@ export default function DashboardPage() {
     return filteredDockets.slice(startIndex, endIndex);
   }, [filteredDockets, startIndex, endIndex]);
 
-  // Export handlers
+  // Export handlers (latest at bottom for downloaded files)
   const handleExportExcel = () => {
     try {
       setIsExporting(true);
       const filename = `Master_Pickup_Delivery_${fromDate || 'start'}_to_${toDate || 'end'}.xlsx`;
-      exportToExcel(allMasterRows, filename);
+      const exportRows = transformDocketsToMasterRows(filteredDockets, 'asc');
+      exportToExcel(exportRows, filename);
     } catch (err) {
       console.error('Failed to export Excel:', err);
       alert('Failed to generate Excel file');
@@ -198,7 +206,8 @@ export default function DashboardPage() {
     try {
       setIsExporting(true);
       const filename = `Master_Pickup_Delivery_${fromDate || 'start'}_to_${toDate || 'end'}.csv`;
-      exportToCSV(allMasterRows, filename);
+      const exportRows = transformDocketsToMasterRows(filteredDockets, 'asc');
+      exportToCSV(exportRows, filename);
     } catch (err) {
       console.error('Failed to export CSV:', err);
       alert('Failed to generate CSV file');
@@ -286,9 +295,9 @@ export default function DashboardPage() {
                   <h2 className="text-xl md:text-2xl font-bold text-[#002d62]">
                     Master Pickup & Delivery Data
                   </h2>
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-[#f7931d]">
+                  {/* <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-[#f7931d]">
                     {allMasterRows.length} Rows
-                  </span>
+                  </span> */}
                 </div>
                 <p className="text-gray-500 text-sm mt-1">
                   Filtered: {filteredDockets.length} of {dockets.length} dockets ({allMasterRows.length} shipment items)
@@ -565,11 +574,22 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 sm:gap-2">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="p-2 border border-gray-300 bg-white text-[#002d62] rounded-lg hover:bg-[#f7931d] hover:text-white hover:border-[#f7931d] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    title="First page (<<)"
+                    aria-label="First page"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
                     className="p-2 border border-gray-300 bg-white text-[#002d62] rounded-lg hover:bg-[#f7931d] hover:text-white hover:border-[#f7931d] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    title="Previous page (<)"
                     aria-label="Previous page"
                   >
                     <ChevronLeft className="w-4 h-4" />
@@ -608,9 +628,20 @@ export default function DashboardPage() {
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
                     className="p-2 border border-gray-300 bg-white text-[#002d62] rounded-lg hover:bg-[#f7931d] hover:text-white hover:border-[#f7931d] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    title="Next page (>)"
                     aria-label="Next page"
                   >
                     <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="p-2 border border-gray-300 bg-white text-[#002d62] rounded-lg hover:bg-[#f7931d] hover:text-white hover:border-[#f7931d] disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    title="Last page (>>)"
+                    aria-label="Last page"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>

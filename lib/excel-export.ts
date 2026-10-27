@@ -427,8 +427,8 @@ export const resolveDistrictAndState = (
   }
 
   // Extract pincode from address if missing
-  if (!pincode && docket.ConsigneeAddress) {
-    const pinMatch = docket.ConsigneeAddress.match(/\b[1-9][0-9]{5}\b/);
+  if (!pincode && docket.ConsignorAddress) {
+    const pinMatch = docket.ConsignorAddress.match(/\b[1-9][0-9]{5}\b/);
     if (pinMatch) {
       pincode = pinMatch[0];
     }
@@ -441,7 +441,7 @@ export const resolveDistrictAndState = (
 
   const destStr = (docket.Destination || '').trim();
   const destLower = destStr.toLowerCase();
-  const addrStr = (docket.ConsigneeAddress || '').trim();
+  const addrStr = (docket.ConsignorAddress || '').trim();
   const fullText = `${destLower} ${addrStr.toLowerCase()}`;
 
   // 1. Match from DISTRICT_CITIES dictionary
@@ -522,22 +522,61 @@ export const resolveDistrictAndState = (
 };
 
 /**
- * Transforms an array of FullDockets into flattened MasterSheetRows matching the Google Sheet / PDF
+ * Helper to parse any date string into a numeric timestamp
  */
-export const transformDocketsToMasterRows = (dockets: FullDocket[]): MasterSheetRow[] => {
+export const parseDateToTimestamp = (dateStr?: string | null): number => {
+  if (!dateStr) return 0;
+  // If DD/MM/YYYY or DD-MM-YYYY format
+  if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/.test(dateStr)) {
+    const parts = dateStr.split(/[\/-]/);
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const year = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    if (!isNaN(d.getTime())) return d.getTime();
+  }
+  const timestamp = new Date(dateStr).getTime();
+  return isNaN(timestamp) ? 0 : timestamp;
+};
+
+/**
+ * Compare two dockets chronologically (Oldest -> Newest)
+ */
+export const compareDockets = (a: FullDocket, b: FullDocket): number => {
+  const timeA = parseDateToTimestamp(a.ShipDate) || parseDateToTimestamp(a.CreatedAt);
+  const timeB = parseDateToTimestamp(b.ShipDate) || parseDateToTimestamp(b.CreatedAt);
+  if (timeA !== timeB) {
+    return timeA - timeB;
+  }
+  const createdA = parseDateToTimestamp(a.CreatedAt);
+  const createdB = parseDateToTimestamp(b.CreatedAt);
+  if (createdA !== createdB) {
+    return createdA - createdB;
+  }
+  const idA = a.Id || (a as any).DocketId || 0;
+  const idB = b.Id || (b as any).DocketId || 0;
+  if (idA !== idB) {
+    return idA - idB;
+  }
+  return (a.DocketNo || '').localeCompare(b.DocketNo || '');
+};
+
+/**
+ * Transforms an array of FullDockets into flattened MasterSheetRows matching the Google Sheet / PDF.
+ * sortOrder: 'desc' = latest docket first on top (for UI dashboard view)
+ * sortOrder: 'asc'  = oldest docket first, latest at bottom (for Excel & CSV download)
+ */
+export const transformDocketsToMasterRows = (
+  dockets: FullDocket[], 
+  sortOrder: 'asc' | 'desc' = 'desc'
+): MasterSheetRow[] => {
   const rows: MasterSheetRow[] = [];
   let srCounter = 1;
 
-  // Sort dockets chronologically: Oldest (From Date) at top -> Current/Newest (To Date) at bottom
+  // 'desc' => Latest at top (UI view)
+  // 'asc'  => Oldest at top -> Latest at bottom (Excel export)
   const sortedDockets = [...dockets].sort((a, b) => {
-    const dateA = a.ShipDate || (a.CreatedAt ? a.CreatedAt.split(' ')[0] : '');
-    const dateB = b.ShipDate || (b.CreatedAt ? b.CreatedAt.split(' ')[0] : '');
-    if (dateA && dateB && dateA !== dateB) {
-      return dateA.localeCompare(dateB);
-    }
-    const createdA = a.CreatedAt ? new Date(a.CreatedAt).getTime() : (a.Id || 0);
-    const createdB = b.CreatedAt ? new Date(b.CreatedAt).getTime() : (b.Id || 0);
-    return createdA - createdB;
+    return sortOrder === 'desc' ? compareDockets(b, a) : compareDockets(a, b);
   });
 
   sortedDockets.forEach((docket) => {
@@ -593,16 +632,16 @@ export const transformDocketsToMasterRows = (dockets: FullDocket[]): MasterSheet
         srNo: srCounter++,
         through: 'VIN WORLD EXPRESS PVT LTD',
         date: formattedDate,
-        docketNo: docket.DocketNo || '',
-        consignor: docket.ConsignorName || '',
-        consignee: docket.ConsigneeName || '',
+        docketNo: (docket.DocketNo || '').toUpperCase(),
+        consignor: (docket.ConsignorName || '').replace(/\s*\([^)]*\)/g, '').trim().toUpperCase(),
+        consignee: (docket.ConsigneeName || '').toUpperCase(),
         mode: modeUpper,
         roadAir: modeUpper === 'AIR' ? 'AIR' : 'ROAD',
-        origin: docket.Origin || '',
-        destination: docket.ConsigneeAddress || docket.Destination || '',
-        district: resolved.district,
-        state: resolved.state,
-        pincode: docket.ConsigneePinCode || resolved.pincode || '',
+        origin: (docket.Origin || '').toUpperCase(),
+        destination: (docket.ConsignorAddress || docket.Destination || '').toUpperCase(),
+        district: (resolved.district || '').toUpperCase(),
+        state: (resolved.state || '').toUpperCase(),
+        pincode: (docket.ConsigneePinCode || resolved.pincode || '').toUpperCase(),
         odaCharges: 'NA',
         billedPaid: 'NIL',
         boxes,
@@ -613,15 +652,15 @@ export const transformDocketsToMasterRows = (dockets: FullDocket[]): MasterSheet
         dimension,
         volWeight,
         chargedWeight,
-        invoiceNo: docket.InvoiceNumber || '',
-        invoiceValue: docket.InvoiceValue ? String(docket.InvoiceValue) : '',
-        contactNo: docket.ConsigneeMobile || docket.ConsignorMobile || '',
-        fw: docket.PickupEmployee || 'SELF',
-        awbNo: docket.EwayBillNo || '',
-        fwName: docket.PickupEmployee || 'SELF',
-        status: statusText,
-        deliveryDate: formattedDeliveryDate,
-        remarks: docket.Declaration || '',
+        invoiceNo: (docket.InvoiceNumber || '').toUpperCase(),
+        invoiceValue: docket.InvoiceValue ? String(docket.InvoiceValue).toUpperCase() : '',
+        contactNo: (docket.ConsigneeMobile || docket.ConsignorMobile || '').toUpperCase(),
+        fw: (docket.PickupEmployee || 'SELF').toUpperCase(),
+        awbNo: (docket.EwayBillNo || '').toUpperCase(),
+        fwName: (docket.PickupEmployee || 'SELF').toUpperCase(),
+        status: statusText.toUpperCase(),
+        deliveryDate: formattedDeliveryDate.toUpperCase(),
+        remarks: (docket.Declaration || '').toUpperCase(),
         rawDocket: docket,
       });
     });
@@ -631,104 +670,110 @@ export const transformDocketsToMasterRows = (dockets: FullDocket[]): MasterSheet
 };
 
 /**
- * Export rows to real Microsoft Excel (.xlsx) file
+ * Export rows to real Microsoft Excel (.xlsx) file (Oldest at top -> Latest at bottom)
  */
 export const exportToExcel = (rows: MasterSheetRow[], filename = 'Master_Pickup_Delivery_data.xlsx') => {
-  const exportData = rows.map((r) => ({
-    'Sr.No': r.srNo,
-    'THROUGH': r.through,
-    'DATE': r.date,
-    'DOCKET': r.docketNo,
-    'CONSIGNOR': r.consignor,
-    'CONSIGNEE': r.consignee,
-    'MODE': r.mode,
-    'Road/Air': r.roadAir,
-    'ORIGIN': r.origin,
-    'DESTINATION': r.destination,
-    'DISTRICT': r.district,
-    'STATE': r.state,
-    'Pin Code': r.pincode,
-    'ODA CHARGES': r.odaCharges,
-    'BILLED/PAID': r.billedPaid,
+  // Ensure rows are sorted chronologically: Oldest at top -> Latest at bottom
+  const exportRows = [...rows].sort((a, b) => {
+    if (a.rawDocket && b.rawDocket) {
+      return compareDockets(a.rawDocket, b.rawDocket);
+    }
+    return 0;
+  });
+
+  const exportData = exportRows.map((r, idx) => ({
+    'Sr.No': idx + 1,
+    'THROUGH': (r.through || '').toUpperCase(),
+    'DATE': (r.date || '').toUpperCase(),
+    'DOCKET': (r.docketNo || '').toUpperCase(),
+    'CONSIGNOR': (r.consignor || '').replace(/\s*\([^)]*\)/g, '').trim().toUpperCase(),
+    'CONSIGNEE': (r.consignee || '').toUpperCase(),
+    'MODE\nRoad/Air': (r.roadAir || r.mode || 'ROAD').toUpperCase(),
+    'ORIGIN': (r.origin || '').toUpperCase(),
+    'DESTINATION': (r.destination || '').toUpperCase(),
+    'DISTRICT': (r.district || '').toUpperCase(),
+    'STATE': (r.state || '').toUpperCase(),
+    'Pin Code': (r.pincode || '').toUpperCase(),
+    'ODA CHARGES': (r.odaCharges || '').toUpperCase(),
+    'BILLED/PAID': (r.billedPaid || '').toUpperCase(),
     'BOXES': r.boxes,
     'Weight': r.weight,
     'Length': r.length,
     'Breadth': r.breadth,
     'Height': r.height,
-    'Dimension': r.dimension,
+    'Dimension': (r.dimension || '').toUpperCase(),
     'Vol. Weight': r.volWeight,
     'Charged weight': r.chargedWeight,
-    'Invoice No': r.invoiceNo,
-    'Invoice value': r.invoiceValue,
-    'Contact No': r.contactNo,
-    'F/W': r.fw,
-    'AWB NO.': r.awbNo,
-    'F/W NAME': r.fwName,
-    'STATUS': r.status,
-    'DELIVERY DATE': r.deliveryDate,
-    'REMARKS': r.remarks,
+    'Invoice No': (r.invoiceNo || '').toUpperCase(),
+    'Invoice value': (r.invoiceValue || '').toUpperCase(),
+    'Contact No': (r.contactNo || '').toUpperCase(),
+    'F/W': (r.fw || '').toUpperCase(),
+    'AWB NO.': (r.awbNo || '').toUpperCase(),
+    'F/W NAME': (r.fwName || '').toUpperCase(),
+    'STATUS': (r.status || '').toUpperCase(),
+    'DELIVERY DATE': (r.deliveryDate || '').toUpperCase(),
+    'REMARKS': (r.remarks || '').toUpperCase(),
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);
 
   // Apply exact Excel formula:
-  // Vol. Weight (Col V): =R2*S2*T2/5000
-  // Charged weight (Col W): =MAX(R2,V2)
-  rows.forEach((r, idx) => {
+  // Vol. Weight (Col U): =Q2*R2*S2/5000 (Length * Breadth * Height / 5000)
+  // Charged weight (Col V): =MAX(P2,U2) (MAX of Weight and Vol. Weight)
+  exportRows.forEach((r, idx) => {
     const rowNum = idx + 2; // Data starts at row 2 in Excel
     if (r.length > 0 && r.breadth > 0 && r.height > 0) {
-      worksheet[`V${rowNum}`] = {
+      worksheet[`U${rowNum}`] = {
         t: 'n',
         v: r.volWeight,
-        f: `R${rowNum}*S${rowNum}*T${rowNum}/5000`
+        f: `Q${rowNum}*R${rowNum}*S${rowNum}/5000`
       };
-      worksheet[`W${rowNum}`] = {
+      worksheet[`V${rowNum}`] = {
         t: 'n',
         v: r.chargedWeight,
-        f: `MAX(R${rowNum},V${rowNum})`
+        f: `MAX(P${rowNum},U${rowNum})`
       };
     } else {
-      worksheet[`W${rowNum}`] = {
+      worksheet[`V${rowNum}`] = {
         t: 'n',
         v: r.chargedWeight
       };
     }
   });
 
-  // Set nice column widths (32 columns matching Master Google Sheet)
+  // Set nice column widths (31 columns matching Master Google Sheet)
   worksheet['!cols'] = [
     { wch: 6 },  // Sr.No (A)
     { wch: 25 }, // THROUGH (B)
     { wch: 12 }, // DATE (C)
     { wch: 16 }, // DOCKET (D)
-    { wch: 16 }, // CONSIGNOR (E)
+    { wch: 20 }, // CONSIGNOR (E)
     { wch: 20 }, // CONSIGNEE (F)
-    { wch: 8 },  // MODE (G)
-    { wch: 10 }, // Road/Air (H)
-    { wch: 12 }, // ORIGIN (I)
-    { wch: 35 }, // DESTINATION (J)
-    { wch: 15 }, // DISTRICT (K)
-    { wch: 15 }, // STATE (L)
-    { wch: 10 }, // Pin Code (M)
-    { wch: 12 }, // ODA CHARGES (N)
-    { wch: 12 }, // BILLED/PAID (O)
-    { wch: 8 },  // BOXES (P)
-    { wch: 10 }, // Weight (Q)
-    { wch: 8 },  // Length (R)
-    { wch: 8 },  // Breadth (S)
-    { wch: 8 },  // Height (T)
-    { wch: 16 }, // Dimension (U)
-    { wch: 12 }, // Vol. Weight (V)
-    { wch: 14 }, // Charged weight (W)
-    { wch: 14 }, // Invoice No (X)
-    { wch: 14 }, // Invoice value (Y)
-    { wch: 14 }, // Contact No (Z)
-    { wch: 10 }, // F/W (AA)
-    { wch: 16 }, // AWB NO. (AB)
-    { wch: 12 }, // F/W NAME (AC)
-    { wch: 14 }, // STATUS (AD)
-    { wch: 14 }, // DELIVERY DATE (AE)
-    { wch: 20 }, // REMARKS (AF)
+    { wch: 12 }, // MODE Road/Air (G)
+    { wch: 12 }, // ORIGIN (H)
+    { wch: 35 }, // DESTINATION (I)
+    { wch: 15 }, // DISTRICT (J)
+    { wch: 15 }, // STATE (K)
+    { wch: 10 }, // Pin Code (L)
+    { wch: 12 }, // ODA CHARGES (M)
+    { wch: 12 }, // BILLED/PAID (N)
+    { wch: 8 },  // BOXES (O)
+    { wch: 10 }, // Weight (P)
+    { wch: 8 },  // Length (Q)
+    { wch: 8 },  // Breadth (R)
+    { wch: 8 },  // Height (S)
+    { wch: 16 }, // Dimension (T)
+    { wch: 12 }, // Vol. Weight (U)
+    { wch: 14 }, // Charged weight (V)
+    { wch: 14 }, // Invoice No (W)
+    { wch: 14 }, // Invoice value (X)
+    { wch: 14 }, // Contact No (Y)
+    { wch: 10 }, // F/W (Z)
+    { wch: 16 }, // AWB NO. (AA)
+    { wch: 12 }, // F/W NAME (AB)
+    { wch: 14 }, // STATUS (AC)
+    { wch: 14 }, // DELIVERY DATE (AD)
+    { wch: 20 }, // REMARKS (AE)
   ];
 
   const workbook = XLSX.utils.book_new();
@@ -737,12 +782,20 @@ export const exportToExcel = (rows: MasterSheetRow[], filename = 'Master_Pickup_
 };
 
 /**
- * Export rows to CSV format
+ * Export rows to CSV format (Oldest at top -> Latest at bottom)
  */
 export const exportToCSV = (rows: MasterSheetRow[], filename = 'Master_Pickup_Delivery_data.csv') => {
+  // Ensure rows are sorted chronologically: Oldest at top -> Latest at bottom
+  const exportRows = [...rows].sort((a, b) => {
+    if (a.rawDocket && b.rawDocket) {
+      return compareDockets(a.rawDocket, b.rawDocket);
+    }
+    return 0;
+  });
+
   const headers = [
     'Sr.No', 'THROUGH', 'DATE', 'DOCKET', 'CONSIGNOR', 'CONSIGNEE',
-    'MODE', 'Road/Air', 'ORIGIN', 'DESTINATION', 'DISTRICT', 'STATE', 'Pin Code',
+    'MODE Road/Air', 'ORIGIN', 'DESTINATION', 'DISTRICT', 'STATE', 'Pin Code',
     'ODA CHARGES', 'BILLED/PAID', 'BOXES', 'Weight', 'Length', 'Breadth', 'Height',
     'Dimension', 'Vol. Weight', 'Charged weight', 'Invoice No', 'Invoice value',
     'Contact No', 'F/W', 'AWB NO.', 'F/W NAME', 'STATUS', 'DELIVERY DATE', 'REMARKS'
@@ -750,40 +803,39 @@ export const exportToCSV = (rows: MasterSheetRow[], filename = 'Master_Pickup_De
 
   const csvRows = [headers.join(',')];
 
-  rows.forEach((r) => {
+  exportRows.forEach((r, idx) => {
     const values = [
-      r.srNo,
-      `"${(r.through || '').replace(/"/g, '""')}"`,
-      `"${r.date}"`,
-      `"${r.docketNo}"`,
-      `"${(r.consignor || '').replace(/"/g, '""')}"`,
-      `"${(r.consignee || '').replace(/"/g, '""')}"`,
-      `"${r.mode}"`,
-      `"${r.roadAir}"`,
-      `"${(r.origin || '').replace(/"/g, '""')}"`,
-      `"${(r.destination || '').replace(/"/g, '""')}"`,
-      `"${(r.district || '').replace(/"/g, '""')}"`,
-      `"${(r.state || '').replace(/"/g, '""')}"`,
-      `"${r.pincode}"`,
-      `"${r.odaCharges}"`,
-      `"${r.billedPaid}"`,
+      idx + 1,
+      `"${(r.through || '').toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.date || '').toUpperCase()}"`,
+      `"${(r.docketNo || '').toUpperCase()}"`,
+      `"${(r.consignor || '').replace(/\s*\([^)]*\)/g, '').trim().toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.consignee || '').toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.roadAir || r.mode || 'ROAD').toUpperCase()}"`,
+      `"${(r.origin || '').toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.destination || '').toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.district || '').toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.state || '').toUpperCase().replace(/"/g, '""')}"`,
+      `"${(r.pincode || '').toUpperCase()}"`,
+      `"${(r.odaCharges || '').toUpperCase()}"`,
+      `"${(r.billedPaid || '').toUpperCase()}"`,
       r.boxes,
       r.weight,
       r.length,
       r.breadth,
       r.height,
-      `"${r.dimension}"`,
+      `"${(r.dimension || '').toUpperCase()}"`,
       r.volWeight,
       r.chargedWeight,
-      `"${r.invoiceNo}"`,
-      `"${r.invoiceValue}"`,
-      `"${r.contactNo}"`,
-      `"${r.fw}"`,
-      `"${r.awbNo}"`,
-      `"${r.fwName}"`,
-      `"${r.status}"`,
-      `"${r.deliveryDate}"`,
-      `"${(r.remarks || '').replace(/"/g, '""')}"`
+      `"${(r.invoiceNo || '').toUpperCase()}"`,
+      `"${(r.invoiceValue || '').toUpperCase()}"`,
+      `"${(r.contactNo || '').toUpperCase()}"`,
+      `"${(r.fw || '').toUpperCase()}"`,
+      `"${(r.awbNo || '').toUpperCase()}"`,
+      `"${(r.fwName || '').toUpperCase()}"`,
+      `"${(r.status || '').toUpperCase()}"`,
+      `"${(r.deliveryDate || '').toUpperCase()}"`,
+      `"${(r.remarks || '').toUpperCase().replace(/"/g, '""')}"`
     ];
     csvRows.push(values.join(','));
   });
