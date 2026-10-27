@@ -1,4 +1,6 @@
 import * as XLSX from 'xlsx';
+import { getCachedPincodeInfo } from './pincode-lookup';
+export { lookupPincode, getCachedPincodeInfo } from './pincode-lookup';
 
 export interface DocketShipment {
   Id?: number;
@@ -427,8 +429,8 @@ export const resolveDistrictAndState = (
   }
 
   // Extract pincode from address if missing
-  if (!pincode && docket.ConsignorAddress) {
-    const pinMatch = docket.ConsignorAddress.match(/\b[1-9][0-9]{5}\b/);
+  if (!pincode && docket.ConsigneeAddress) {
+    const pinMatch = docket.ConsigneeAddress.match(/\b[1-9][0-9]{5}\b/);
     if (pinMatch) {
       pincode = pinMatch[0];
     }
@@ -439,9 +441,21 @@ export const resolveDistrictAndState = (
     return { district, state, pincode };
   }
 
+  // 0. Check exact 6-digit Pincode mapping / cache
+  if (pincode && pincode.length === 6) {
+    const pinInfo = getCachedPincodeInfo(pincode);
+    if (pinInfo) {
+      if (!district && pinInfo.district) district = pinInfo.district;
+      if (!state && pinInfo.state) state = pinInfo.state;
+      if (district && state) {
+        return { district, state, pincode };
+      }
+    }
+  }
+
   const destStr = (docket.Destination || '').trim();
   const destLower = destStr.toLowerCase();
-  const addrStr = (docket.ConsignorAddress || '').trim();
+  const addrStr = (docket.ConsigneeAddress || '').trim();
   const fullText = `${destLower} ${addrStr.toLowerCase()}`;
 
   // 1. Match from DISTRICT_CITIES dictionary
@@ -562,6 +576,40 @@ export const compareDockets = (a: FullDocket, b: FullDocket): number => {
 };
 
 /**
+ * Formats full destination address including Consignee Address and Pin Code
+ * e.g. "SHOP NO. 3, MOTIA HUES, OPPOSITE CHINAR HOMES, PEERMUCHALLA ROAD, ZIRAKPUR, PUNJAB – 160104"
+ */
+export const formatFullDestinationAddress = (
+  address?: string,
+  pincode?: string,
+  fallbackDestination?: string
+): string => {
+  let rawAddr = (address || '').trim().replace(/,\s*,/g, ',').replace(/[\s,\-]+$/, '');
+  const pin = (pincode || '').trim();
+
+  // If no ConsigneeAddress, fallback to Destination
+  if (!rawAddr) {
+    rawAddr = (fallbackDestination || '').trim().replace(/[\s,\-]+$/, '');
+  }
+
+  if (!rawAddr) {
+    return pin ? pin : '';
+  }
+
+  // If pincode is already included in rawAddr, avoid duplicating it
+  if (pin && rawAddr.includes(pin)) {
+    return rawAddr;
+  }
+
+  // Append Pin Code with ' – '
+  if (pin) {
+    return `${rawAddr} – ${pin}`;
+  }
+
+  return rawAddr;
+};
+
+/**
  * Transforms an array of FullDockets into flattened MasterSheetRows matching the Google Sheet / PDF.
  * sortOrder: 'desc' = latest docket first on top (for UI dashboard view)
  * sortOrder: 'asc'  = oldest docket first, latest at bottom (for Excel & CSV download)
@@ -627,6 +675,13 @@ export const transformDocketsToMasterRows = (
         : (weight || 0);
 
       const modeUpper = (docket.ModeOfTransport || 'ROAD').toUpperCase();
+      const resolvedPin = (docket.ConsigneePinCode || resolved.pincode || '').trim();
+
+      const fullDestination = formatFullDestinationAddress(
+        docket.ConsigneeAddress,
+        resolvedPin,
+        docket.Destination
+      ).toUpperCase();
 
       rows.push({
         srNo: srCounter++,
@@ -638,10 +693,10 @@ export const transformDocketsToMasterRows = (
         mode: modeUpper,
         roadAir: modeUpper === 'AIR' ? 'AIR' : 'ROAD',
         origin: (docket.Origin || '').toUpperCase(),
-        destination: (docket.ConsignorAddress || docket.Destination || '').toUpperCase(),
+        destination: fullDestination,
         district: (resolved.district || '').toUpperCase(),
         state: (resolved.state || '').toUpperCase(),
-        pincode: (docket.ConsigneePinCode || resolved.pincode || '').toUpperCase(),
+        pincode: resolvedPin.toUpperCase(),
         odaCharges: 'NA',
         billedPaid: 'NIL',
         boxes,
@@ -840,7 +895,7 @@ export const exportToCSV = (rows: MasterSheetRow[], filename = 'Master_Pickup_De
     csvRows.push(values.join(','));
   });
 
-  const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);

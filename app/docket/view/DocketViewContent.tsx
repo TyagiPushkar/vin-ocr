@@ -653,7 +653,7 @@ const DocketViewContent = () => {
                     month: 'short',
                     year: 'numeric'
                   })} */}
-                  {docket?.PickupDate && !isNaN(new Date(docket.PickupDate))
+                  {docket?.PickupDate && !isNaN(new Date(docket.PickupDate).getTime())
                     ? new Date(docket.PickupDate).toLocaleDateString('en-IN', {
                       day: '2-digit',
                       month: 'short',

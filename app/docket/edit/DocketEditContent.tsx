@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Printer, RefreshCw, Download, ChevronLeft, ChevronRight, Menu, X, Home, Save, Edit2, Plus, Trash2 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { DashboardHeader } from '@/components/dashboard-header';
+import { lookupPincode, resolveDistrictAndState } from '@/lib/excel-export';
 
 interface Shipment {
   Id?: number;
@@ -222,6 +223,43 @@ const DocketEditContent = () => {
         [field]: value
       }
     }));
+
+    if (section === 'consignee' && field === 'pincode' && /^\d{6}$/.test(value.trim())) {
+      const pin = value.trim();
+      const res = resolveDistrictAndState({
+        DocketNo: '',
+        ShipDate: '',
+        ConsigneePinCode: pin,
+        ConsigneeAddress: formData.consignee.address,
+        Destination: formData.destination
+      });
+
+      if (res.district || res.state) {
+        setFormData(curr => ({
+          ...curr,
+          consignee: {
+            ...curr.consignee,
+            district: curr.consignee.district || res.district || '',
+            state: curr.consignee.state || res.state || ''
+          },
+          destination: curr.destination || res.district || ''
+        }));
+      }
+
+      lookupPincode(pin).then(info => {
+        if (info) {
+          setFormData(curr => ({
+            ...curr,
+            consignee: {
+              ...curr.consignee,
+              district: curr.consignee.district || info.district || '',
+              state: curr.consignee.state || info.state || ''
+            },
+            destination: curr.destination || info.district || ''
+          }));
+        }
+      }).catch(() => {});
+    }
   };
 
   const handleFieldChange = (field: string, value: string | number) => {

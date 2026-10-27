@@ -27,7 +27,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { DashboardHeader } from "@/components/dashboard-header";
-import { resolveDistrictAndState } from "@/lib/excel-export";
+import { resolveDistrictAndState, lookupPincode } from "@/lib/excel-export";
 
 // Box type configurations
 const BOX_TYPES = {
@@ -199,16 +199,28 @@ export default function AddDocketPage() {
 
       // Auto-resolve district and state if pincode is 6 digits
       if (name === 'consigneePincode' && /^\d{6}$/.test(value.trim())) {
+        const pin = value.trim();
         const res = resolveDistrictAndState({
           DocketNo: '',
           ShipDate: '',
-          ConsigneePinCode: value.trim(),
+          ConsigneePinCode: pin,
           ConsigneeAddress: next.consigneeAddress,
           Destination: next.destination
         });
         if (!next.consigneeDistrict && res.district) next.consigneeDistrict = res.district;
         if (!next.consigneeState && res.state) next.consigneeState = res.state;
         if (!next.destination && res.district) next.destination = res.district;
+
+        lookupPincode(pin).then(info => {
+          if (info) {
+            setFormData(curr => ({
+              ...curr,
+              consigneeDistrict: curr.consigneeDistrict || info.district || '',
+              consigneeState: curr.consigneeState || info.state || '',
+              destination: curr.destination || info.district || ''
+            }));
+          }
+        }).catch(() => {});
       }
 
       return next;
@@ -354,6 +366,19 @@ export default function AddDocketPage() {
       consigneeState: prev.consigneeState || res.state || "",
       destination: prev.destination || res.district || "",
     }));
+
+    if (pin && /^\d{6}$/.test(pin)) {
+      lookupPincode(pin).then(info => {
+        if (info) {
+          setFormData(curr => ({
+            ...curr,
+            consigneeDistrict: curr.consigneeDistrict || info.district || '',
+            consigneeState: curr.consigneeState || info.state || '',
+            destination: curr.destination || info.district || ''
+          }));
+        }
+      }).catch(() => {});
+    }
   };
 
   // File/Blob ko Base64 String me convert karne ke liye helper

@@ -183,9 +183,9 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
                 </td>
 
                 {/* DESTINATION */}
-                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 min-w-[240px]">
+                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 min-w-[280px] max-w-[420px]">
                   <span 
-                    className={`line-clamp-2 ${row.rawDocket?.image_url ? 'cursor-pointer hover:text-[#f7931d]' : ''}`}
+                    className={`block whitespace-normal break-words leading-snug ${row.rawDocket?.image_url ? 'cursor-pointer hover:text-[#f7931d]' : ''}`}
                     onClick={() => row.rawDocket?.image_url && setSelectedImage(row.rawDocket.image_url)}
                     title={row.destination}
                   >
