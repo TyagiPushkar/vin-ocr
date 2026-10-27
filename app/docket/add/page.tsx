@@ -27,6 +27,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { DashboardHeader } from "@/components/dashboard-header";
+import { resolveDistrictAndState } from "@/lib/excel-export";
 
 // Box type configurations
 const BOX_TYPES = {
@@ -114,7 +115,7 @@ export default function AddDocketPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const [capturedImage, setCapturedImage] = useState<File | null>(null);
+  const [capturedImage, setCapturedImage] = useState<File | string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   // Shipment form state
@@ -193,7 +194,25 @@ export default function AddDocketPage() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const next = { ...prev, [name]: value };
+
+      // Auto-resolve district and state if pincode is 6 digits
+      if (name === 'consigneePincode' && /^\d{6}$/.test(value.trim())) {
+        const res = resolveDistrictAndState({
+          DocketNo: '',
+          ShipDate: '',
+          ConsigneePinCode: value.trim(),
+          ConsigneeAddress: next.consigneeAddress,
+          Destination: next.destination
+        });
+        if (!next.consigneeDistrict && res.district) next.consigneeDistrict = res.district;
+        if (!next.consigneeState && res.state) next.consigneeState = res.state;
+        if (!next.destination && res.district) next.destination = res.district;
+      }
+
+      return next;
+    });
 
     if (name === 'invoiceRequired') {
       setShowInvoiceFields(value === 'Yes');
@@ -317,12 +336,23 @@ export default function AddDocketPage() {
     const lines = text.split('\n').filter(line => line.trim());
     const nameMatch = lines[0] || "";
 
+    const pin = pincodeMatch?.[0] || "";
+    const res = resolveDistrictAndState({
+      DocketNo: '',
+      ShipDate: '',
+      ConsigneeAddress: text,
+      ConsigneePinCode: pin
+    });
+
     setFormData(prev => ({
       ...prev,
       consigneeName: nameMatch,
       consigneeAddress: text,
-      consigneePincode: pincodeMatch?.[0] || "",
+      consigneePincode: pin,
       consigneeMobile: mobileMatch?.[0] || "",
+      consigneeDistrict: prev.consigneeDistrict || res.district || "",
+      consigneeState: prev.consigneeState || res.state || "",
+      destination: prev.destination || res.district || "",
     }));
   };
 
@@ -635,7 +665,14 @@ export default function AddDocketPage() {
           pincode: consignor.pincode,
         } : null;
       }
-      return manualConsignor.ConsignorName ? manualConsignor : null;
+      return manualConsignor.ConsignorName ? {
+        name: manualConsignor.ConsignorName,
+        mobile: manualConsignor.ConsignorMobile,
+        address: manualConsignor.ConsignorAddress,
+        district: manualConsignor.ConsignorDistrict,
+        state: manualConsignor.ConsignorState,
+        pincode: manualConsignor.ConsignorPincode,
+      } : null;
     };
 
     const consignorDisplay = getConsignorDisplay();
