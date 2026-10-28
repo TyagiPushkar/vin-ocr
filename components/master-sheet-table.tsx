@@ -104,7 +104,8 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">DISTRICT</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">STATE</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">Pin Code</th>
-              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">ODA CHARGES</th>
+              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">ODA</th>
+              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">CHARGES</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">BILLED/PAID</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">BOXES</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-right">Weight</th>
@@ -117,8 +118,11 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">Invoice No</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-right">Invoice value</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">Contact No</th>
-              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">F/W</th>
-              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">AWB NO.</th>
+              <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">total BOX</th>
+              <th className="px-3 py-2 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">
+                <div>F/W</div>
+                <div>AWB NO.</div>
+              </th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">F/W NAME</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap text-center">STATUS</th>
               <th className="px-3 py-3 font-semibold border-r border-[#003d80] whitespace-nowrap">DELIVERY DATE</th>
@@ -208,14 +212,19 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
                   {row.pincode || '-'}
                 </td>
 
-                {/* ODA CHARGES */}
+                {/* ODA */}
                 <td className="px-3 py-2.5 text-center text-gray-500 border-r border-gray-200 whitespace-nowrap">
-                  {row.odaCharges}
+                  {row.oda || 'NA'}
+                </td>
+
+                {/* CHARGES */}
+                <td className="px-3 py-2.5 text-center text-gray-500 border-r border-gray-200 whitespace-nowrap">
+                  {row.charges || 'NIL'}
                 </td>
 
                 {/* BILLED/PAID */}
                 <td className="px-3 py-2.5 text-center text-gray-500 border-r border-gray-200 whitespace-nowrap">
-                  {row.billedPaid}
+                  {row.billedPaid || 'NIL'}
                 </td>
 
                 {/* BOXES */}
@@ -273,18 +282,18 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
                   {row.contactNo || '-'}
                 </td>
 
-                {/* F/W */}
-                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap">
-                  {row.fw}
+                {/* total BOX */}
+                <td className="px-3 py-2.5 text-center font-bold text-gray-800 border-r border-gray-200 whitespace-nowrap">
+                  {row.totalBox}
                 </td>
 
-                {/* AWB NO. */}
-                <td className="px-3 py-2.5 font-mono text-gray-700 border-r border-gray-200 whitespace-nowrap">
-                  {row.awbNo || '-'}
+                {/* F/W AWB NO. */}
+                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap font-medium text-center">
+                  {row.fwAwbNo || '-'}
                 </td>
 
                 {/* F/W NAME */}
-                <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap font-medium">
+                <td className="px-3 py-2.5 font-mono text-gray-700 border-r border-gray-200 whitespace-nowrap font-medium text-center">
                   {row.fwName || '-'}
                 </td>
 
