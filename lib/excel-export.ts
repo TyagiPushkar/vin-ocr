@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { getCachedPincodeInfo } from './pincode-lookup';
+import { getCachedPincodeInfo, lookupPincode } from './pincode-lookup';
 export { lookupPincode, getCachedPincodeInfo } from './pincode-lookup';
 
 export interface DocketShipment {
@@ -181,238 +181,11 @@ const STATE_ALIASES: Record<string, string> = {
 };
 
 /**
- * 3-digit pincode prefix to District and State
- */
-const PIN3_MAP: Record<string, { d: string; s: string }> = {
-  '110': { d: 'Delhi', s: 'Delhi' },
-  '121': { d: 'Faridabad', s: 'Haryana' },
-  '122': { d: 'Gurugram', s: 'Haryana' },
-  '123': { d: 'Rewari', s: 'Haryana' },
-  '124': { d: 'Rohtak', s: 'Haryana' },
-  '125': { d: 'Hisar', s: 'Haryana' },
-  '126': { d: 'Jind', s: 'Haryana' },
-  '127': { d: 'Bhiwani', s: 'Haryana' },
-  '131': { d: 'Sonipat', s: 'Haryana' },
-  '132': { d: 'Karnal', s: 'Haryana' },
-  '133': { d: 'Ambala', s: 'Haryana' },
-  '134': { d: 'Panchkula', s: 'Haryana' },
-  '135': { d: 'Yamunanagar', s: 'Haryana' },
-  '136': { d: 'Kurukshetra', s: 'Haryana' },
-  '140': { d: 'Mohali', s: 'Punjab' },
-  '141': { d: 'Ludhiana', s: 'Punjab' },
-  '142': { d: 'Moga', s: 'Punjab' },
-  '143': { d: 'Amritsar', s: 'Punjab' },
-  '144': { d: 'Jalandhar', s: 'Punjab' },
-  '145': { d: 'Pathankot', s: 'Punjab' },
-  '146': { d: 'Hoshiarpur', s: 'Punjab' },
-  '147': { d: 'Patiala', s: 'Punjab' },
-  '148': { d: 'Sangrur', s: 'Punjab' },
-  '151': { d: 'Bathinda', s: 'Punjab' },
-  '152': { d: 'Firozpur', s: 'Punjab' },
-  '160': { d: 'Chandigarh', s: 'Chandigarh' },
-  '201': { d: 'Ghaziabad', s: 'Uttar Pradesh' },
-  '202': { d: 'Aligarh', s: 'Uttar Pradesh' },
-  '203': { d: 'Bulandshahr', s: 'Uttar Pradesh' },
-  '204': { d: 'Hathras', s: 'Uttar Pradesh' },
-  '205': { d: 'Etah', s: 'Uttar Pradesh' },
-  '208': { d: 'Kanpur', s: 'Uttar Pradesh' },
-  '209': { d: 'Kanpur Dehat', s: 'Uttar Pradesh' },
-  '211': { d: 'Prayagraj', s: 'Uttar Pradesh' },
-  '221': { d: 'Varanasi', s: 'Uttar Pradesh' },
-  '224': { d: 'Ayodhya', s: 'Uttar Pradesh' },
-  '226': { d: 'Lucknow', s: 'Uttar Pradesh' },
-  '231': { d: 'Mirzapur', s: 'Uttar Pradesh' },
-  '241': { d: 'Hardoi', s: 'Uttar Pradesh' },
-  '242': { d: 'Shahjahanpur', s: 'Uttar Pradesh' },
-  '243': { d: 'Bareilly', s: 'Uttar Pradesh' },
-  '244': { d: 'Moradabad', s: 'Uttar Pradesh' },
-  '245': { d: 'Hapur', s: 'Uttar Pradesh' },
-  '247': { d: 'Saharanpur', s: 'Uttar Pradesh' },
-  '248': { d: 'Dehradun', s: 'Uttarakhand' },
-  '249': { d: 'Haridwar', s: 'Uttarakhand' },
-  '250': { d: 'Meerut', s: 'Uttar Pradesh' },
-  '251': { d: 'Muzaffarnagar', s: 'Uttar Pradesh' },
-  '262': { d: 'Pilibhit', s: 'Uttar Pradesh' },
-  '263': { d: 'Nainital', s: 'Uttarakhand' },
-  '273': { d: 'Gorakhpur', s: 'Uttar Pradesh' },
-  '275': { d: 'Mau', s: 'Uttar Pradesh' },
-  '276': { d: 'Azamgarh', s: 'Uttar Pradesh' },
-  '281': { d: 'Mathura', s: 'Uttar Pradesh' },
-  '282': { d: 'Agra', s: 'Uttar Pradesh' },
-  '283': { d: 'Firozabad', s: 'Uttar Pradesh' },
-  '284': { d: 'Jhansi', s: 'Uttar Pradesh' },
-  '302': { d: 'Jaipur', s: 'Rajasthan' },
-  '303': { d: 'Jaipur Rural', s: 'Rajasthan' },
-  '305': { d: 'Ajmer', s: 'Rajasthan' },
-  '311': { d: 'Bhilwara', s: 'Rajasthan' },
-  '313': { d: 'Udaipur', s: 'Rajasthan' },
-  '324': { d: 'Kota', s: 'Rajasthan' },
-  '334': { d: 'Bikaner', s: 'Rajasthan' },
-  '342': { d: 'Jodhpur', s: 'Rajasthan' },
-  '380': { d: 'Ahmedabad', s: 'Gujarat' },
-  '390': { d: 'Vadodara', s: 'Gujarat' },
-  '395': { d: 'Surat', s: 'Gujarat' },
-  '400': { d: 'Mumbai', s: 'Maharashtra' },
-  '401': { d: 'Palghar', s: 'Maharashtra' },
-  '403': { d: 'North Goa', s: 'Goa' },
-  '411': { d: 'Pune', s: 'Maharashtra' },
-  '413': { d: 'Solapur', s: 'Maharashtra' },
-  '414': { d: 'Ahmednagar', s: 'Maharashtra' },
-  '416': { d: 'Kolhapur', s: 'Maharashtra' },
-  '421': { d: 'Thane', s: 'Maharashtra' },
-  '422': { d: 'Nashik', s: 'Maharashtra' },
-  '431': { d: 'Chhatrapati Sambhajinagar', s: 'Maharashtra' },
-  '440': { d: 'Nagpur', s: 'Maharashtra' },
-  '441': { d: 'Nagpur', s: 'Maharashtra' },
-  '452': { d: 'Indore', s: 'Madhya Pradesh' },
-  '462': { d: 'Bhopal', s: 'Madhya Pradesh' },
-  '474': { d: 'Gwalior', s: 'Madhya Pradesh' },
-  '482': { d: 'Jabalpur', s: 'Madhya Pradesh' },
-  '486': { d: 'Rewa', s: 'Madhya Pradesh' },
-  '492': { d: 'Raipur', s: 'Chhattisgarh' },
-  '495': { d: 'Bilaspur', s: 'Chhattisgarh' },
-  '500': { d: 'Hyderabad', s: 'Telangana' },
-  '530': { d: 'Visakhapatnam', s: 'Andhra Pradesh' },
-  '560': { d: 'Bengaluru', s: 'Karnataka' },
-  '600': { d: 'Chennai', s: 'Tamil Nadu' },
-  '641': { d: 'Coimbatore', s: 'Tamil Nadu' },
-  '682': { d: 'Ernakulam', s: 'Kerala' },
-  '695': { d: 'Thiruvananthapuram', s: 'Kerala' },
-  '700': { d: 'Kolkata', s: 'West Bengal' },
-  '711': { d: 'Howrah', s: 'West Bengal' },
-  '751': { d: 'Bhubaneswar', s: 'Odisha' },
-  '781': { d: 'Guwahati', s: 'Assam' },
-  '800': { d: 'Patna', s: 'Bihar' },
-  '834': { d: 'Ranchi', s: 'Jharkhand' }
-};
-
-/**
- * Key logistics cities & district mapping
- */
-const DISTRICT_CITIES = [
-  // Delhi NCR
-  { d: 'Delhi', s: 'Delhi', keys: ['delhi', 'new delhi', 'delh', 'okhla', 'rohini', 'dwarka', 'karol bagh'] },
-  { d: 'Gurugram', s: 'Haryana', keys: ['gurgaon', 'gurugram', 'ggn', 'sohna', 'manesar', 'pataudi'] },
-  { d: 'Faridabad', s: 'Haryana', keys: ['faridabad', 'fbd', 'ballabgarh'] },
-  { d: 'Ghaziabad', s: 'Uttar Pradesh', keys: ['ghaziabad', 'gzb', 'modinagar', 'sahibabad', 'loni'] },
-  { d: 'Gautam Buddha Nagar', s: 'Uttar Pradesh', keys: ['noida', 'greater noida', 'g noida', 'dadri', 'jewar'] },
-  // Haryana
-  { d: 'Ambala', s: 'Haryana', keys: ['ambala', 'ambala cantt'] },
-  { d: 'Panchkula', s: 'Haryana', keys: ['panchkula'] },
-  { d: 'Sonipat', s: 'Haryana', keys: ['sonipat', 'sonepat', 'kundli', 'rai', 'murthal'] },
-  { d: 'Panipat', s: 'Haryana', keys: ['panipat', 'samalkha'] },
-  { d: 'Karnal', s: 'Haryana', keys: ['karnal', 'gharaunda'] },
-  { d: 'Rohtak', s: 'Haryana', keys: ['rohtak'] },
-  { d: 'Rewari', s: 'Haryana', keys: ['rewari', 'bawal', 'dharuhera'] },
-  { d: 'Hisar', s: 'Haryana', keys: ['hisar', 'hissar', 'hansi'] },
-  { d: 'Sirsa', s: 'Haryana', keys: ['sirsa'] },
-  { d: 'Jhajjar', s: 'Haryana', keys: ['jhajjar', 'bahadurgarh'] },
-  { d: 'Yamunanagar', s: 'Haryana', keys: ['yamunanagar', 'jagadhri'] },
-  { d: 'Kurukshetra', s: 'Haryana', keys: ['kurukshetra', 'thanesar'] },
-  // Punjab & Chandigarh
-  { d: 'Chandigarh', s: 'Chandigarh', keys: ['chandigarh', 'chd'] },
-  { d: 'Mohali', s: 'Punjab', keys: ['mohali', 'zirakpur', 'derabassi', 'kharar', 'sas nagar'] },
-  { d: 'Ludhiana', s: 'Punjab', keys: ['ludhiana', 'khanna'] },
-  { d: 'Amritsar', s: 'Punjab', keys: ['amritsar'] },
-  { d: 'Jalandhar', s: 'Punjab', keys: ['jalandhar'] },
-  { d: 'Pathankot', s: 'Punjab', keys: ['pathankot'] },
-  { d: 'Patiala', s: 'Punjab', keys: ['patiala'] },
-  { d: 'Bathinda', s: 'Punjab', keys: ['bathinda', 'bhatinda'] },
-  // Uttar Pradesh
-  { d: 'Agra', s: 'Uttar Pradesh', keys: ['agra', 'fatehabad'] },
-  { d: 'Aligarh', s: 'Uttar Pradesh', keys: ['aligarh'] },
-  { d: 'Bareilly', s: 'Uttar Pradesh', keys: ['bareilly'] },
-  { d: 'Etah', s: 'Uttar Pradesh', keys: ['etah'] },
-  { d: 'Gorakhpur', s: 'Uttar Pradesh', keys: ['gorakhpur'] },
-  { d: 'Hapur', s: 'Uttar Pradesh', keys: ['hapur'] },
-  { d: 'Jhansi', s: 'Uttar Pradesh', keys: ['jhansi'] },
-  { d: 'Kanpur', s: 'Uttar Pradesh', keys: ['kanpur'] },
-  { d: 'Lucknow', s: 'Uttar Pradesh', keys: ['lucknow'] },
-  { d: 'Mathura', s: 'Uttar Pradesh', keys: ['mathura', 'vrindavan'] },
-  { d: 'Mau', s: 'Uttar Pradesh', keys: ['mau'] },
-  { d: 'Meerut', s: 'Uttar Pradesh', keys: ['meerut'] },
-  { d: 'Moradabad', s: 'Uttar Pradesh', keys: ['moradabad'] },
-  { d: 'Muzaffarnagar', s: 'Uttar Pradesh', keys: ['muzaffarnagar'] },
-  { d: 'Prayagraj', s: 'Uttar Pradesh', keys: ['allahabad', 'prayagraj'] },
-  { d: 'Saharanpur', s: 'Uttar Pradesh', keys: ['saharanpur'] },
-  { d: 'Varanasi', s: 'Uttar Pradesh', keys: ['varanasi', 'banaras', 'kashi'] },
-  // Uttarakhand
-  { d: 'Dehradun', s: 'Uttarakhand', keys: ['dehradun', 'ddn', 'rishikesh', 'mussoorie'] },
-  { d: 'Haridwar', s: 'Uttarakhand', keys: ['haridwar', 'roorkee', 'laksar'] },
-  { d: 'Nainital', s: 'Uttarakhand', keys: ['haldwani', 'nainital', 'kaladhungi', 'rudrapur', 'pantnagar', 'kashipur', 'ramnagar'] },
-  // Rajasthan
-  { d: 'Jaipur', s: 'Rajasthan', keys: ['jaipur'] },
-  { d: 'Jodhpur', s: 'Rajasthan', keys: ['jodhpur'] },
-  { d: 'Kota', s: 'Rajasthan', keys: ['kota'] },
-  { d: 'Ajmer', s: 'Rajasthan', keys: ['ajmer', 'kishangarh'] },
-  { d: 'Bhilwara', s: 'Rajasthan', keys: ['bhilwara'] },
-  { d: 'Udaipur', s: 'Rajasthan', keys: ['udaipur'] },
-  { d: 'Jhunjhunu', s: 'Rajasthan', keys: ['jhunjhunu'] },
-  { d: 'Bikaner', s: 'Rajasthan', keys: ['bikaner'] },
-  // Gujarat
-  { d: 'Ahmedabad', s: 'Gujarat', keys: ['ahmedabad', 'amd', 'sanand', 'changodar'] },
-  { d: 'Surat', s: 'Gujarat', keys: ['surat', 'khatodara'] },
-  { d: 'Vadodara', s: 'Gujarat', keys: ['vadodara', 'baroda', 'vaodadara'] },
-  { d: 'Rajkot', s: 'Gujarat', keys: ['rajkot'] },
-  { d: 'Jamnagar', s: 'Gujarat', keys: ['jamnagar'] },
-  // Maharashtra
-  { d: 'Mumbai', s: 'Maharashtra', keys: ['mumbai', 'bombay', 'andheri', 'bandra', 'borivali', 'dadar'] },
-  { d: 'Thane', s: 'Maharashtra', keys: ['thane', 'kalyan', 'dombivli', 'mira bhayandar', 'navi mumbai'] },
-  { d: 'Pune', s: 'Maharashtra', keys: ['pune', 'ravet', 'pcmc', 'pimpri', 'chinchwad', 'hadapsar', 'hinjawadi'] },
-  { d: 'Nagpur', s: 'Maharashtra', keys: ['nagpur'] },
-  { d: 'Nashik', s: 'Maharashtra', keys: ['nashik'] },
-  { d: 'Chhatrapati Sambhajinagar', s: 'Maharashtra', keys: ['aurangabad', 'sambhaji nagar'] },
-  { d: 'Nanded', s: 'Maharashtra', keys: ['nanded'] },
-  { d: 'Dhule', s: 'Maharashtra', keys: ['dhule'] },
-  { d: 'Ahmednagar', s: 'Maharashtra', keys: ['ahmednagar'] },
-  { d: 'Kolhapur', s: 'Maharashtra', keys: ['kolhapur', 'phulewadi'] },
-  // Madhya Pradesh
-  { d: 'Indore', s: 'Madhya Pradesh', keys: ['indore', 'pithampur'] },
-  { d: 'Bhopal', s: 'Madhya Pradesh', keys: ['bhopal', 'mandideep'] },
-  { d: 'Gwalior', s: 'Madhya Pradesh', keys: ['gwalior'] },
-  { d: 'Jabalpur', s: 'Madhya Pradesh', keys: ['jabalpur'] },
-  { d: 'Rewa', s: 'Madhya Pradesh', keys: ['rewa'] },
-  { d: 'Dewas', s: 'Madhya Pradesh', keys: ['dewas'] },
-  { d: 'Ujjain', s: 'Madhya Pradesh', keys: ['ujjain'] },
-  // Chhattisgarh
-  { d: 'Raipur', s: 'Chhattisgarh', keys: ['raipur'] },
-  { d: 'Bilaspur', s: 'Chhattisgarh', keys: ['bilaspur'] },
-  { d: 'Baloda Bazar', s: 'Chhattisgarh', keys: ['baloda bazar'] },
-  { d: 'Durg', s: 'Chhattisgarh', keys: ['bhilai', 'durg'] },
-  // Bihar & Jharkhand
-  { d: 'Patna', s: 'Bihar', keys: ['patna', 'kankarbagh', 'danapur'] },
-  { d: 'Gaya', s: 'Bihar', keys: ['gaya'] },
-  { d: 'Bhagalpur', s: 'Bihar', keys: ['bhagalpur'] },
-  { d: 'Muzaffarpur', s: 'Bihar', keys: ['muzaffarpur'] },
-  { d: 'Ranchi', s: 'Jharkhand', keys: ['ranchi'] },
-  { d: 'Jamshedpur', s: 'Jharkhand', keys: ['jamshedpur', 'tatanagar'] },
-  { d: 'Dhanbad', s: 'Jharkhand', keys: ['dhanbad'] },
-  // West Bengal & Odisha
-  { d: 'Kolkata', s: 'West Bengal', keys: ['kolkata', 'calcutta'] },
-  { d: 'Howrah', s: 'West Bengal', keys: ['howrah'] },
-  { d: 'Asansol', s: 'West Bengal', keys: ['asansol'] },
-  { d: 'Siliguri', s: 'West Bengal', keys: ['siliguri'] },
-  { d: 'Cuttack', s: 'Odisha', keys: ['cuttack'] },
-  { d: 'Bhubaneswar', s: 'Odisha', keys: ['bhubaneswar'] },
-  { d: 'Sundargarh', s: 'Odisha', keys: ['bahal', 'rourkela'] },
-  // North East
-  { d: 'Imphal', s: 'Manipur', keys: ['imphal', 'manipur'] },
-  { d: 'Agartala', s: 'Tripura', keys: ['agartala', 'tripura'] },
-  // South
-  { d: 'Bengaluru', s: 'Karnataka', keys: ['bengaluru', 'bangalore', 'blr', 'whitefield', 'electronic city'] },
-  { d: 'Hyderabad', s: 'Telangana', keys: ['hyderabad', 'hyd', 'secunderabad'] },
-  { d: 'Chennai', s: 'Tamil Nadu', keys: ['chennai', 'madras'] },
-  { d: 'Coimbatore', s: 'Tamil Nadu', keys: ['coimbatore', 'cjb'] },
-  { d: 'Salem', s: 'Tamil Nadu', keys: ['salem'] },
-  { d: 'Ernakulam', s: 'Kerala', keys: ['kochi', 'cochin', 'ernakulam'] },
-  { d: 'Thiruvananthapuram', s: 'Kerala', keys: ['trivandrum', 'thiruvananthapuram'] },
-  { d: 'Palakkad', s: 'Kerala', keys: ['palakkad', 'pathiripala'] },
-  { d: 'Alappuzha', s: 'Kerala', keys: ['alappuzha', 'alleppey'] },
-  { d: 'Kollam', s: 'Kerala', keys: ['kollam', 'quilon'] }
-];
-
-/**
- * Resolves District and State for a docket using stored data, address, destination, and pincode
+ * Resolves District and State for a docket.
+ * 1. Strictly uses stored ConsigneeDistrict and ConsigneeState if present.
+ * 2. If missing, dynamically uses India Post API cached data (https://api.postalpincode.in) based on ConsigneePinCode.
+ * 3. If neither is present, returns empty so it displays '-'.
+ * No static city/destination guessing is performed.
  */
 export const resolveDistrictAndState = (
   docket: FullDocket
@@ -420,17 +193,6 @@ export const resolveDistrictAndState = (
   let district = (docket.ConsigneeDistrict || '').trim();
   let state = (docket.ConsigneeState || '').trim();
   let pincode = (docket.ConsigneePinCode || '').trim();
-
-  // If district is mistakenly stored as full address / long sentence, reset it
-  if (district.length >= 35) {
-    district = '';
-  }
-
-  // Normalize state if it matches abbreviation (e.g. "UK" -> "Uttarakhand", "HR" -> "Haryana")
-  const stateLower = state.toLowerCase();
-  if (state && STATE_ALIASES[stateLower]) {
-    state = STATE_ALIASES[stateLower];
-  }
 
   // Extract pincode from address if missing
   if (!pincode && docket.ConsigneeAddress) {
@@ -440,100 +202,19 @@ export const resolveDistrictAndState = (
     }
   }
 
-  // If both district and state already present and clean, return directly
-  if (district && state) {
-    return { district, state, pincode };
-  }
-
-  // 0. Check exact 6-digit Pincode mapping / cache
-  if (pincode && pincode.length === 6) {
-    const pinInfo = getCachedPincodeInfo(pincode);
-    if (pinInfo) {
-      if (!district && pinInfo.district) district = pinInfo.district;
-      if (!state && pinInfo.state) state = pinInfo.state;
-      if (district && state) {
-        return { district, state, pincode };
-      }
+  // If district or state is missing, resolve dynamically via India Post API cache (https://api.postalpincode.in/pincode/{pincode})
+  if ((!district || !state) && pincode && /^\d{6}$/.test(pincode)) {
+    const apiInfo = getCachedPincodeInfo(pincode);
+    if (apiInfo) {
+      if (!district && apiInfo.district) district = apiInfo.district;
+      if (!state && apiInfo.state) state = apiInfo.state;
     }
   }
 
-  const destStr = (docket.Destination || '').trim();
-  const destLower = destStr.toLowerCase();
-  const addrStr = (docket.ConsigneeAddress || '').trim();
-  const fullText = `${destLower} ${addrStr.toLowerCase()}`;
-
-  // 1. Match from DISTRICT_CITIES dictionary
-  for (const item of DISTRICT_CITIES) {
-    for (const key of item.keys) {
-      const regex = new RegExp(`(?:^|[^a-z0-9])${key}(?:$|[^a-z0-9])`, 'i');
-      if (regex.test(fullText)) {
-        if (!district) district = item.d;
-        if (!state) state = item.s;
-        break;
-      }
-    }
-    if (district && state) break;
-  }
-
-  // 2. Check 3-digit pincode map
-  if (pincode && pincode.length >= 3) {
-    const p3 = pincode.slice(0, 3);
-    if (PIN3_MAP[p3]) {
-      if (!district) district = PIN3_MAP[p3].d;
-      if (!state) state = PIN3_MAP[p3].s;
-    }
-  }
-
-  // 3. Fallback state from 2-digit pincode postal circle
-  if (!state && pincode && pincode.length >= 2) {
-    const p2 = parseInt(pincode.slice(0, 2), 10);
-    const p3 = parseInt(pincode.slice(0, 3), 10);
-
-    if (p3 === 160) state = 'Chandigarh';
-    else if ((p3 >= 246 && p3 <= 249) || (p3 >= 262 && p3 <= 263)) state = 'Uttarakhand';
-    else if (p3 === 403) state = 'Goa';
-    else if (p3 >= 500 && p3 <= 509) state = 'Telangana';
-    else if (p3 >= 515 && p3 <= 535) state = 'Andhra Pradesh';
-    else if (p3 === 737) state = 'Sikkim';
-    else if (p3 === 744) state = 'Andaman & Nicobar Islands';
-    else if (p2 === 11) state = 'Delhi';
-    else if (p2 >= 12 && p2 <= 13) state = 'Haryana';
-    else if (p2 >= 14 && p2 <= 16) state = 'Punjab';
-    else if (p2 === 17) state = 'Himachal Pradesh';
-    else if (p2 >= 18 && p2 <= 19) state = 'Jammu & Kashmir';
-    else if (p2 >= 20 && p2 <= 28) state = 'Uttar Pradesh';
-    else if (p2 >= 30 && p2 <= 34) state = 'Rajasthan';
-    else if (p2 >= 36 && p2 <= 39) state = 'Gujarat';
-    else if (p2 >= 40 && p2 <= 44) state = 'Maharashtra';
-    else if (p2 >= 45 && p2 <= 48) state = 'Madhya Pradesh';
-    else if (p2 === 49) state = 'Chhattisgarh';
-    else if (p2 >= 50 && p2 <= 53) state = 'Andhra Pradesh';
-    else if (p2 >= 56 && p2 <= 59) state = 'Karnataka';
-    else if (p2 >= 60 && p2 <= 64) state = 'Tamil Nadu';
-    else if (p2 >= 67 && p2 <= 69) state = 'Kerala';
-    else if (p2 >= 70 && p2 <= 74) state = 'West Bengal';
-    else if (p2 >= 75 && p2 <= 77) state = 'Odisha';
-    else if (p2 === 78) state = 'Assam';
-    else if (p2 >= 80 && p2 <= 85) state = 'Bihar';
-  }
-
-  // 4. Fallback state from destination if destination was state code
-  if (!state && STATE_ALIASES[destLower]) {
-    state = STATE_ALIASES[destLower];
-  }
-
-  // 5. Fallback district from destination if reasonable short name
-  if (!district && destStr && destStr.length < 25 && !STATE_ALIASES[destLower]) {
-    // Capitalize destination name
-    district = destStr
-      .split(/\s+/)
-      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-      .join(' ');
-  }
-
-  // If still no district, fallback to state
-  if (!district && state) {
-    district = state;
+  // Normalize state if abbreviation was stored (e.g. "UK" -> "Uttarakhand", "HR" -> "Haryana")
+  const stateLower = state.toLowerCase();
+  if (state && STATE_ALIASES[stateLower]) {
+    state = STATE_ALIASES[stateLower];
   }
 
   return { district, state, pincode };

@@ -32,6 +32,7 @@ import {
   exportToCSV,
   compareDockets
 } from '@/lib/excel-export';
+import { lookupPincode, getCachedPincodeInfo } from '@/lib/pincode-lookup';
 
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -187,10 +188,41 @@ export default function DashboardPage() {
     return filteredDockets.slice(startIndex, endIndex);
   }, [filteredDockets, startIndex, endIndex]);
 
+  // Auto-resolve missing district/state from India Post API using ConsigneePinCode
+  useEffect(() => {
+    if (!dockets || dockets.length === 0) return;
+
+    const missingPins = new Set<string>();
+    dockets.forEach(d => {
+      const pin = (d.ConsigneePinCode || '').trim().replace(/\D/g, '');
+      if (pin.length === 6 && (!d.ConsigneeDistrict || !d.ConsigneeState)) {
+        if (!getCachedPincodeInfo(pin)) {
+          missingPins.add(pin);
+        }
+      }
+    });
+
+    if (missingPins.size === 0) return;
+
+    Promise.all(Array.from(missingPins).map(pin => lookupPincode(pin))).then(() => {
+      // Re-trigger render so master rows pickup cached API data
+      setDockets(prev => [...prev]);
+    });
+  }, [dockets]);
+
   // Export handlers (latest at bottom for downloaded files)
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     try {
       setIsExporting(true);
+      const missingPins = filteredDockets
+        .filter(d => !d.ConsigneeDistrict || !d.ConsigneeState)
+        .map(d => (d.ConsigneePinCode || '').trim().replace(/\D/g, ''))
+        .filter(pin => pin.length === 6 && !getCachedPincodeInfo(pin));
+
+      if (missingPins.length > 0) {
+        await Promise.all(missingPins.map(pin => lookupPincode(pin)));
+      }
+
       const filename = `Master_Pickup_Delivery_${fromDate || 'start'}_to_${toDate || 'end'}.xlsx`;
       const exportRows = transformDocketsToMasterRows(filteredDockets, 'asc');
       exportToExcel(exportRows, filename);
@@ -202,9 +234,18 @@ export default function DashboardPage() {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     try {
       setIsExporting(true);
+      const missingPins = filteredDockets
+        .filter(d => !d.ConsigneeDistrict || !d.ConsigneeState)
+        .map(d => (d.ConsigneePinCode || '').trim().replace(/\D/g, ''))
+        .filter(pin => pin.length === 6 && !getCachedPincodeInfo(pin));
+
+      if (missingPins.length > 0) {
+        await Promise.all(missingPins.map(pin => lookupPincode(pin)));
+      }
+
       const filename = `Master_Pickup_Delivery_${fromDate || 'start'}_to_${toDate || 'end'}.csv`;
       const exportRows = transformDocketsToMasterRows(filteredDockets, 'asc');
       exportToCSV(exportRows, filename);
@@ -215,6 +256,8 @@ export default function DashboardPage() {
       setIsExporting(false);
     }
   };
+
+  console.log(dockets,"docketsdocketsdocketsdockets")
 
   // Quick Stats
   const stats = {

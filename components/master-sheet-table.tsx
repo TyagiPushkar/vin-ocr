@@ -1,16 +1,76 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye } from 'lucide-react';
 import { MasterSheetRow } from '@/lib/excel-export';
+import { lookupPincode, getCachedPincodeInfo } from '@/lib/pincode-lookup';
 
 interface MasterSheetTableProps {
   rows: MasterSheetRow[];
   loading: boolean;
 }
 
+/**
+ * Component to display district or state:
+ * 1. Agar ConsigneeDistrict / ConsigneeState aayega to yahi dikhega (priority #1).
+ * 2. Agar database me nahi milega (empty/null), tabhi ConsigneePinCode se India Post API
+ *    (https://api.postalpincode.in/pincode/{ConsigneePinCode}) se find karke dikhayega.
+ * 3. Agar pincode bhi nahi hai to '-' dikhega.
+ */
+const PincodeDynamicText: React.FC<{
+  initialValue?: string;
+  pincode?: string;
+  field: 'district' | 'state';
+}> = ({ initialValue, pincode, field }) => {
+  const dbValue = (initialValue || '').trim();
+
+  const [val, setVal] = useState<string>(() => {
+    // Priority 1: Agar database value maujood hai
+    if (dbValue && dbValue !== '-') {
+      return dbValue.toUpperCase();
+    }
+    // Priority 2: Agar cache me pehle se API response maujood hai
+    const cleanPin = (pincode || '').trim().replace(/\D/g, '');
+    if (cleanPin.length === 6) {
+      const cached = getCachedPincodeInfo(cleanPin);
+      if (cached && cached[field]) {
+        return cached[field].toUpperCase();
+      }
+    }
+    return '';
+  });
+
+  useEffect(() => {
+    // 1. Agar database se ConsigneeDistrict / ConsigneeState aayega to wahi dikhega
+    if (dbValue && dbValue !== '-') {
+      setVal(dbValue.toUpperCase());
+      return;
+    }
+
+    // 2. Agar nahi mila, tabhi ConsigneePinCode se API call karke find karna hai
+    const cleanPin = (pincode || '').trim().replace(/\D/g, '');
+    if (cleanPin.length === 6) {
+      const cached = getCachedPincodeInfo(cleanPin);
+      if (cached && cached[field]) {
+        setVal(cached[field].toUpperCase());
+        return;
+      }
+
+      lookupPincode(cleanPin).then(info => {
+        if (info && info[field]) {
+          setVal(info[field].toUpperCase());
+        }
+      }).catch(() => {});
+    }
+  }, [dbValue, pincode, field]);
+
+  return <>{val || '-'}</>;
+};
+
 export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loading }) => {
+
+
   const router = useRouter();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
@@ -199,12 +259,20 @@ export const MasterSheetTable: React.FC<MasterSheetTableProps> = ({ rows, loadin
 
                 {/* DISTRICT */}
                 <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap">
-                  {row.district || '-'}
+                  <PincodeDynamicText 
+                    initialValue={row.rawDocket?.ConsigneeDistrict || row.district} 
+                    pincode={row.pincode} 
+                    field="district" 
+                  />
                 </td>
 
                 {/* STATE */}
                 <td className="px-3 py-2.5 text-gray-700 border-r border-gray-200 whitespace-nowrap">
-                  {row.state || '-'}
+                  <PincodeDynamicText 
+                    initialValue={row.rawDocket?.ConsigneeState || row.state} 
+                    pincode={row.pincode} 
+                    field="state" 
+                  />
                 </td>
 
                 {/* Pin Code */}
