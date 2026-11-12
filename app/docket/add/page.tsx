@@ -999,7 +999,9 @@ export default function AddDocketPage() {
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-xs font-semibold text-[#002d62] block mb-1">Name *</label>
+                          <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                            Name <span className="text-red-500">*</span>
+                          </label>
                           <input
                             type="text"
                             name="ConsignorName"
@@ -1010,7 +1012,9 @@ export default function AddDocketPage() {
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-semibold text-[#002d62] block mb-1">Mobile *</label>
+                          <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                            Mobile <span className="text-red-500">*</span>
+                          </label>
                           <input
                             type="tel"
                             name="ConsignorMobile"
@@ -1024,7 +1028,9 @@ export default function AddDocketPage() {
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Address *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Address <span className="text-red-500">*</span>
+                        </label>
                         <textarea
                           name="ConsignorAddress"
                           value={manualConsignor.ConsignorAddress}
@@ -1038,7 +1044,7 @@ export default function AddDocketPage() {
                       <div className="grid grid-cols-3 gap-2.5">
                         <div>
                           <label className="text-xs font-semibold text-[#002d62] flex items-center justify-between mb-1">
-                            <span>Pincode *</span>
+                            <span>Pincode <span className="text-red-500">*</span></span>
                             {loadingConsignorPin && <span className="text-[10px] text-orange-500 animate-pulse font-normal">...</span>}
                           </label>
                           <input
@@ -1156,7 +1162,9 @@ export default function AddDocketPage() {
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Full Name *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Full Name <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="text"
                           name="consigneeName"
@@ -1168,7 +1176,9 @@ export default function AddDocketPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Mobile Number *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Mobile Number <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="tel"
                           name="consigneeMobile"
@@ -1183,7 +1193,9 @@ export default function AddDocketPage() {
                     </div>
 
                     <div>
-                      <label className="text-xs font-semibold text-[#002d62] block mb-1">Address *</label>
+                      <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                        Address <span className="text-red-500">*</span>
+                      </label>
                       <textarea
                         name="consigneeAddress"
                         value={formData.consigneeAddress}
@@ -1198,7 +1210,7 @@ export default function AddDocketPage() {
                     <div className="grid grid-cols-3 gap-2.5">
                       <div>
                         <label className="text-xs font-semibold text-[#002d62] flex items-center justify-between mb-1">
-                          <span>Pincode *</span>
+                          <span>Pincode <span className="text-red-500">*</span></span>
                           {loadingConsigneePin && <span className="text-[10px] text-orange-500 animate-pulse font-normal">...</span>}
                         </label>
                         <input
@@ -1255,7 +1267,9 @@ export default function AddDocketPage() {
                   <div className="space-y-2.5">
                     <div className="grid grid-cols-2 gap-2.5">
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Origin *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Origin <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="text"
                           name="origin"
@@ -1267,7 +1281,9 @@ export default function AddDocketPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Destination *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Destination <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="text"
                           name="destination"
@@ -1282,7 +1298,9 @@ export default function AddDocketPage() {
 
                     <div className="grid grid-cols-3 gap-2.5">
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Mode *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Mode <span className="text-red-500">*</span>
+                        </label>
                         <select
                           name="modeOfTransport"
                           value={formData.modeOfTransport}
@@ -1297,7 +1315,9 @@ export default function AddDocketPage() {
                         </select>
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Type *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Type <span className="text-red-500">*</span>
+                        </label>
                         <select
                           name="shipmentType"
                           value={formData.shipmentType}
@@ -1356,7 +1376,9 @@ export default function AddDocketPage() {
 
                     <div className="grid grid-cols-3 gap-2.5">
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Pickup Date *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Pickup Date <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="datetime-local"
                           name="pickupDate"
@@ -1367,7 +1389,9 @@ export default function AddDocketPage() {
                         />
                       </div>
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Pickup Emp *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Pickup Emp <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="text"
                           name="pickupEmployee"
@@ -1400,7 +1424,9 @@ export default function AddDocketPage() {
                       <div className="p-1.5 bg-[#f7931d]/10 rounded-lg">
                         <Package className="w-4 h-4 text-[#f7931d]" />
                       </div>
-                      <h3 className="text-sm font-bold text-[#002d62]">Shipments / Boxes *</h3>
+                      <h3 className="text-sm font-bold text-[#002d62]">
+                        Shipments / Boxes <span className="text-red-500">*</span>
+                      </h3>
                     </div>
                     {shipments.length > 0 && (
                       <span className="text-xs px-2.5 py-0.5 bg-blue-50 text-blue-800 font-bold rounded-full border border-blue-200">
@@ -1426,7 +1452,9 @@ export default function AddDocketPage() {
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Weight (kg) *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Weight (kg) <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="number"
                           value={shipmentForm.actualWeight}
@@ -1439,7 +1467,9 @@ export default function AddDocketPage() {
                       </div>
 
                       <div>
-                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Quantity *</label>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">
+                          Quantity <span className="text-red-500">*</span>
+                        </label>
                         <input
                           type="number"
                           value={shipmentForm.noOfBox}
