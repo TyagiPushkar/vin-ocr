@@ -27,7 +27,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 import { DashboardHeader } from "@/components/dashboard-header";
-import { resolveDistrictAndState, lookupPincode } from "@/lib/excel-export";
+import { resolveDistrictAndState, lookupPincode, getCachedPincodeInfo } from "@/lib/excel-export";
 
 // Box type configurations
 const BOX_TYPES = {
@@ -117,6 +117,8 @@ export default function AddDocketPage() {
   const [mounted, setMounted] = useState(false);
   const [capturedImage, setCapturedImage] = useState<File | string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [loadingConsignorPin, setLoadingConsignorPin] = useState(false);
+  const [loadingConsigneePin, setLoadingConsigneePin] = useState(false);
 
   // Shipment form state
   const [shipmentForm, setShipmentForm] = useState({
@@ -163,14 +165,39 @@ export default function AddDocketPage() {
     if (value !== 'manual') {
       const consignor = consignors.find(c => c.id.toString() === value);
       if (consignor) {
+        const pin = (consignor.pincode || '').trim().replace(/\D/g, '');
+        const district = consignor.district || '';
+        const state = consignor.state || '';
+
         setManualConsignor({
           ConsignorName: consignor.name || '',
           ConsignorMobile: consignor.phone || '',
           ConsignorAddress: consignor.address || '',
-          ConsignorDistrict: consignor.district || '',
-          ConsignorState: consignor.state || '',
+          ConsignorDistrict: district,
+          ConsignorState: state,
           ConsignorPincode: consignor.pincode || '',
         });
+
+        if (district && !formData.origin) {
+          setFormData(prev => ({ ...prev, origin: district }));
+        }
+
+        // If consignor has 6-digit pincode but missing district/state, auto lookup via India Post API
+        if (pin.length === 6 && (!district || !state)) {
+          lookupPincode(pin).then(info => {
+            if (info) {
+              setManualConsignor(prev => ({
+                ...prev,
+                ConsignorDistrict: prev.ConsignorDistrict || info.district || '',
+                ConsignorState: prev.ConsignorState || info.state || '',
+              }));
+              setFormData(prev => ({
+                ...prev,
+                origin: prev.origin || info.district || '',
+              }));
+            }
+          }).catch(() => {});
+        }
       }
     } else {
       // Reset manual form when switching to manual entry
@@ -188,46 +215,69 @@ export default function AddDocketPage() {
   const handleManualConsignorChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setManualConsignor(prev => ({ ...prev, [name]: value }));
+
+    // Auto-resolve district and state when 6-digit pincode is entered
+    if (name === 'ConsignorPincode') {
+      const cleanPin = value.trim().replace(/\D/g, '');
+      if (cleanPin.length === 6) {
+        setLoadingConsignorPin(true);
+        lookupPincode(cleanPin)
+          .then(info => {
+            if (info) {
+              setManualConsignor(prev => ({
+                ...prev,
+                ConsignorDistrict: info.district || prev.ConsignorDistrict,
+                ConsignorState: info.state || prev.ConsignorState,
+              }));
+              setFormData(prev => ({
+                ...prev,
+                origin: prev.origin || info.district || '',
+              }));
+            }
+          })
+          .catch(err => {
+            console.warn('Consignor pincode lookup failed:', err);
+          })
+          .finally(() => {
+            setLoadingConsignorPin(false);
+          });
+      }
+    }
   };
 
   if (!mounted) return null;
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => {
-      const next = { ...prev, [name]: value };
-
-      // Auto-resolve district and state if pincode is 6 digits
-      if (name === 'consigneePincode' && /^\d{6}$/.test(value.trim())) {
-        const pin = value.trim();
-        const res = resolveDistrictAndState({
-          DocketNo: '',
-          ShipDate: '',
-          ConsigneePinCode: pin,
-          ConsigneeAddress: next.consigneeAddress,
-          Destination: next.destination
-        });
-        if (!next.consigneeDistrict && res.district) next.consigneeDistrict = res.district;
-        if (!next.consigneeState && res.state) next.consigneeState = res.state;
-        if (!next.destination && res.district) next.destination = res.district;
-
-        lookupPincode(pin).then(info => {
-          if (info) {
-            setFormData(curr => ({
-              ...curr,
-              consigneeDistrict: curr.consigneeDistrict || info.district || '',
-              consigneeState: curr.consigneeState || info.state || '',
-              destination: curr.destination || info.district || ''
-            }));
-          }
-        }).catch(() => {});
-      }
-
-      return next;
-    });
+    setFormData(prev => ({ ...prev, [name]: value }));
 
     if (name === 'invoiceRequired') {
       setShowInvoiceFields(value === 'Yes');
+    }
+
+    // Auto-resolve district and state when 6-digit consignee pincode is entered
+    if (name === 'consigneePincode') {
+      const cleanPin = value.trim().replace(/\D/g, '');
+      if (cleanPin.length === 6) {
+        setLoadingConsigneePin(true);
+        lookupPincode(cleanPin)
+          .then(info => {
+            if (info) {
+              setFormData(prev => ({
+                ...prev,
+                consigneeDistrict: info.district || prev.consigneeDistrict,
+                consigneeState: info.state || prev.consigneeState,
+                destination: prev.destination || info.district || '',
+              }));
+            }
+          })
+          .catch(err => {
+            console.warn('Consignee pincode lookup failed:', err);
+          })
+          .finally(() => {
+            setLoadingConsigneePin(false);
+          });
+      }
     }
   };
 
@@ -368,16 +418,22 @@ export default function AddDocketPage() {
     }));
 
     if (pin && /^\d{6}$/.test(pin)) {
-      lookupPincode(pin).then(info => {
-        if (info) {
-          setFormData(curr => ({
-            ...curr,
-            consigneeDistrict: curr.consigneeDistrict || info.district || '',
-            consigneeState: curr.consigneeState || info.state || '',
-            destination: curr.destination || info.district || ''
-          }));
-        }
-      }).catch(() => {});
+      setLoadingConsigneePin(true);
+      lookupPincode(pin)
+        .then(info => {
+          if (info) {
+            setFormData(curr => ({
+              ...curr,
+              consigneeDistrict: info.district || curr.consigneeDistrict || '',
+              consigneeState: info.state || curr.consigneeState || '',
+              destination: curr.destination || info.district || '',
+            }));
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          setLoadingConsigneePin(false);
+        });
     }
   };
 
@@ -527,25 +583,34 @@ export default function AddDocketPage() {
 
     // Validate consignor based on selection
     if (selectedConsignor === 'manual') {
-      const requiredConsignorFields = ['ConsignorName', 'ConsignorMobile', 'ConsignorAddress'];
+      const requiredConsignorFields = ['ConsignorName', 'ConsignorMobile', 'ConsignorAddress', 'ConsignorPincode'];
       for (const field of requiredConsignorFields) {
-        if (!manualConsignor[field as keyof ConsignorData]) {
+        if (!manualConsignor[field as keyof ConsignorData]?.trim()) {
           setError(`Consignor ${field.replace('Consignor', '')} is required for manual entry`);
           return;
         }
       }
+      if (!/^\d{6}$/.test(manualConsignor.ConsignorPincode.trim())) {
+        setError('Consignor Pincode must be a valid 6-digit number');
+        return;
+      }
     }
 
     const required = [
-      'consigneeName', 'consigneeMobile', 'consigneeAddress',
+      'consigneeName', 'consigneeMobile', 'consigneeAddress', 'consigneePincode',
       'origin', 'destination', 'pickupEmployee'
     ];
 
     for (const field of required) {
-      if (!formData[field as keyof typeof formData]) {
+      if (!formData[field as keyof typeof formData]?.trim()) {
         setError(`${field.replace(/([A-Z])/g, ' $1')} is required`);
         return;
       }
+    }
+
+    if (!/^\d{6}$/.test(formData.consigneePincode.trim())) {
+      setError('Consignee Pincode must be a valid 6-digit number');
+      return;
     }
 
     if (shipments.length === 0) {
@@ -658,11 +723,23 @@ export default function AddDocketPage() {
       pickupEmployee: '',
       ewayBillNo: '',
     });
+    if (selectedConsignor === 'manual') {
+      setManualConsignor({
+        ConsignorName: '',
+        ConsignorMobile: '',
+        ConsignorAddress: '',
+        ConsignorDistrict: '',
+        ConsignorState: '',
+        ConsignorPincode: '',
+      });
+    }
     setShipments([]);
     setShowInvoiceFields(false);
     setCapturedImage(null);
     setImagePreview(null);
     setOcrText('');
+    setLoadingConsignorPin(false);
+    setLoadingConsigneePin(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -861,634 +938,639 @@ export default function AddDocketPage() {
   return (
     <ProtectedRoute>
       <DashboardHeader />
-      <div className="min-h-screen bg-gradient-to-b from-[#f7f9fc] to-[#eef2f7]">
-        {/* Header */}
-        {/* <div className="bg-[#002d62] text-white p-4 sticky top-0 z-40">
-          <div className="max-w-5xl mx-auto">
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="p-2 hover:bg-white/10 rounded-lg transition"
-              >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <h1 className="text-xl font-bold text-center flex-1">Create New Docket</h1>
-              <div className="w-10" />
-            </div>
-          </div>
-        </div> */}
-
-        <div className="max-w-5xl mx-auto p-4">
+      <div className="bg-[#f4f7fb] p-2.5 sm:p-4 pb-6">
+        <div className="max-w-[1440px] mx-auto">
           {/* Messages */}
           {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
-              <div className="font-semibold">⚠️ {error}</div>
+            <div className="mb-2.5 p-2.5 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs sm:text-sm flex items-center justify-between shadow-sm">
+              <span className="font-medium">⚠️ {error}</span>
+              <button type="button" onClick={() => setError('')} className="text-red-500 hover:text-red-700 p-1">
+                <X className="w-4 h-4" />
+              </button>
             </div>
           )}
           {success && (
-            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700">
-              <div className="font-semibold">✅ {success}</div>
+            <div className="mb-2.5 p-2.5 bg-green-50 border border-green-200 rounded-lg text-green-700 text-xs sm:text-sm flex items-center justify-between shadow-sm">
+              <span className="font-medium">✅ {success}</span>
+              <button type="button" onClick={() => setSuccess('')} className="text-green-500 hover:text-green-700 p-1">
+                <X className="w-4 h-4" />
+              </button>
             </div>
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Consignor Section - Dropdown with manual option */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-              <SectionHeader icon={Building2} title="Select Consignor" />
-
-              <div className="mb-6">
-                <label className="text-sm font-semibold text-[#002d62] block mb-2">
-                  Choose Consignor *
-                </label>
-                <select
-                  value={selectedConsignor}
-                  onChange={handleConsignorChange}
-                  className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900 appearance-none"
-                  disabled={loadingConsignors}
-                >
-                  <option value="manual">➕ Add Manually</option>
-                  {loadingConsignors ? (
-                    <option disabled>Loading consignors...</option>
-                  ) : (
-                    consignors.map((consignor) => (
-                      <option key={consignor.id} value={consignor.id}>
-                        {consignor.name} - {consignor.phone}
-                      </option>
-                    ))
-                  )}
-                </select>
-                {loadingConsignors && (
-                  <div className="mt-2 text-sm text-gray-500 flex items-center gap-2">
-                    <div className="w-4 h-4 border-2 border-[#f7931d] border-t-transparent rounded-full animate-spin"></div>
-                    Loading consignors...
+          <form onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+              
+              {/* LEFT COLUMN: Consignor & Consignee */}
+              <div className="lg:col-span-6 space-y-3">
+                
+                {/* 1. Consignor (From) Card */}
+                <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-[#f7931d]/10 rounded-lg">
+                        <Building2 className="w-4 h-4 text-[#f7931d]" />
+                      </div>
+                      <h3 className="text-sm font-bold text-[#002d62]">Consignor (From)</h3>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={selectedConsignor}
+                        onChange={handleConsignorChange}
+                        className="px-2.5 py-1.5 text-xs font-semibold bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-800"
+                        disabled={loadingConsignors}
+                      >
+                        <option value="manual">➕ Add Manually</option>
+                        {loadingConsignors ? (
+                          <option disabled>Loading...</option>
+                        ) : (
+                          consignors.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} - {c.phone}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
                   </div>
-                )}
-              </div>
 
-              {/* Manual Consignor Entry Form */}
-              {selectedConsignor === 'manual' && (
-                <div className="space-y-4 border-t pt-6">
-                  <h4 className="font-bold text-[#002d62]">Enter Consignor Details</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                        <User className="w-4 h-4" />
-                        Name *
-                      </label>
-                      <input
-                        type="text"
-                        name="ConsignorName"
-                        value={manualConsignor.ConsignorName}
-                        onChange={handleManualConsignorChange}
-                        placeholder="Enter consignor name"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
+                  {selectedConsignor === 'manual' ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-semibold text-[#002d62] block mb-1">Name *</label>
+                          <input
+                            type="text"
+                            name="ConsignorName"
+                            value={manualConsignor.ConsignorName}
+                            onChange={handleManualConsignorChange}
+                            placeholder="Consignor name"
+                            className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-orange-100 text-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#002d62] block mb-1">Mobile *</label>
+                          <input
+                            type="tel"
+                            name="ConsignorMobile"
+                            value={manualConsignor.ConsignorMobile}
+                            onChange={handleManualConsignorChange}
+                            placeholder="10-digit mobile"
+                            maxLength={10}
+                            className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-orange-100 text-gray-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Address *</label>
+                        <textarea
+                          name="ConsignorAddress"
+                          value={manualConsignor.ConsignorAddress}
+                          onChange={handleManualConsignorChange}
+                          placeholder="Complete address / street / area"
+                          rows={2}
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-orange-100 text-gray-900 resize-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        <div>
+                          <label className="text-xs font-semibold text-[#002d62] flex items-center justify-between mb-1">
+                            <span>Pincode *</span>
+                            {loadingConsignorPin && <span className="text-[10px] text-orange-500 animate-pulse font-normal">...</span>}
+                          </label>
+                          <input
+                            type="text"
+                            name="ConsignorPincode"
+                            value={manualConsignor.ConsignorPincode}
+                            onChange={handleManualConsignorChange}
+                            placeholder="6-digit"
+                            maxLength={6}
+                            required
+                            className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900 font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#002d62] block mb-1">District</label>
+                          <input
+                            type="text"
+                            name="ConsignorDistrict"
+                            value={manualConsignor.ConsignorDistrict}
+                            onChange={handleManualConsignorChange}
+                            placeholder="Auto-filled"
+                            className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-semibold text-[#002d62] block mb-1">State</label>
+                          <input
+                            type="text"
+                            name="ConsignorState"
+                            value={manualConsignor.ConsignorState}
+                            onChange={handleManualConsignorChange}
+                            placeholder="Auto-filled"
+                            className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                        <Phone className="w-4 h-4" />
-                        Mobile *
-                      </label>
-                      <input
-                        type="tel"
-                        name="ConsignorMobile"
-                        value={manualConsignor.ConsignorMobile}
-                        onChange={handleManualConsignorChange}
-                        placeholder="10-digit mobile"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
+                  ) : (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs text-gray-700 flex flex-wrap items-center justify-between gap-1.5">
+                      <div>
+                        <span className="font-bold text-[#002d62] text-sm">{manualConsignor.ConsignorName}</span>
+                        <span className="text-gray-500 ml-2 font-medium">({manualConsignor.ConsignorMobile})</span>
+                        <div className="text-gray-600 mt-1">{manualConsignor.ConsignorAddress}</div>
+                      </div>
+                      <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-semibold rounded text-xs border border-blue-200">
+                        {manualConsignor.ConsignorDistrict || '-'}, {manualConsignor.ConsignorState || '-'} ({manualConsignor.ConsignorPincode || '-'})
+                      </span>
                     </div>
-                    <div className="md:col-span-2">
-                      <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2 mb-2">
-                        <MapPin className="w-4 h-4" />
-                        Address *
+                  )}
+                </div>
+
+                {/* 2. Consignee (To) Card with Integrated OCR Scan */}
+                <div className="bg-white rounded-xl p-4 sm:p-5 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-[#f7931d]/10 rounded-lg">
+                        <User className="w-4 h-4 text-[#f7931d]" />
+                      </div>
+                      <h3 className="text-sm font-bold text-[#002d62]">Consignee Details (To)</h3>
+                    </div>
+
+                    {/* Integrated OCR Button in header */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        onChange={handleOCRUpload}
+                        className="hidden"
+                        id="ocr-upload"
+                        disabled={ocrLoading}
+                        ref={fileInputRef}
+                      />
+                      <label
+                        htmlFor="ocr-upload"
+                        className={`cursor-pointer inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border transition shadow-sm ${
+                          ocrLoading
+                            ? 'bg-gray-100 text-gray-400 border-gray-300'
+                            : 'bg-orange-50 text-[#f7931d] border-orange-200 hover:bg-[#f7931d] hover:text-white'
+                        }`}
+                      >
+                        {ocrLoading ? (
+                          <>
+                            <div className="w-3 h-3 border-2 border-[#f7931d] border-t-transparent rounded-full animate-spin" />
+                            <span>Scanning...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Camera className="w-3.5 h-3.5" />
+                            <span>Scan Photo</span>
+                          </>
+                        )}
                       </label>
+                    </div>
+                  </div>
+
+                  {/* Scanned photo chip */}
+                  {imagePreview && (
+                    <div className="mb-2.5 p-2 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between text-xs text-green-800">
+                      <div className="flex items-center gap-2">
+                        <img src={imagePreview} alt="OCR" className="w-7 h-7 object-cover rounded border border-green-300" />
+                        <span className="font-medium text-xs">Address auto-detected from photo ✓</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="text-red-500 hover:text-red-700 font-bold p-1"
+                        title="Remove photo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Full Name *</label>
+                        <input
+                          type="text"
+                          name="consigneeName"
+                          value={formData.consigneeName}
+                          onChange={handleInputChange}
+                          placeholder="Receiver name"
+                          required
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-orange-100 text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Mobile Number *</label>
+                        <input
+                          type="tel"
+                          name="consigneeMobile"
+                          value={formData.consigneeMobile}
+                          onChange={handleInputChange}
+                          placeholder="10-digit mobile"
+                          maxLength={10}
+                          required
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-orange-100 text-gray-900"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-semibold text-[#002d62] block mb-1">Address *</label>
                       <textarea
-                        name="ConsignorAddress"
-                        value={manualConsignor.ConsignorAddress}
-                        onChange={handleManualConsignorChange}
-                        placeholder="Enter complete address"
-                        rows={3}
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
+                        name="consigneeAddress"
+                        value={formData.consigneeAddress}
+                        onChange={handleInputChange}
+                        placeholder="Complete delivery address"
+                        rows={2}
+                        required
+                        className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-1 focus:ring-orange-100 text-gray-900 resize-none"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62]">District</label>
-                      <input
-                        type="text"
-                        name="ConsignorDistrict"
-                        value={manualConsignor.ConsignorDistrict}
-                        onChange={handleManualConsignorChange}
-                        placeholder="Enter district"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62]">State</label>
-                      <input
-                        type="text"
-                        name="ConsignorState"
-                        value={manualConsignor.ConsignorState}
-                        onChange={handleManualConsignorChange}
-                        placeholder="Enter state"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62]">Pincode</label>
-                      <input
-                        type="text"
-                        name="ConsignorPincode"
-                        value={manualConsignor.ConsignorPincode}
-                        onChange={handleManualConsignorChange}
-                        placeholder="6-digit pincode"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] flex items-center justify-between mb-1">
+                          <span>Pincode *</span>
+                          {loadingConsigneePin && <span className="text-[10px] text-orange-500 animate-pulse font-normal">...</span>}
+                        </label>
+                        <input
+                          type="text"
+                          name="consigneePincode"
+                          value={formData.consigneePincode}
+                          onChange={handleInputChange}
+                          placeholder="6-digit"
+                          maxLength={6}
+                          required
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900 font-medium"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">District</label>
+                        <input
+                          type="text"
+                          name="consigneeDistrict"
+                          value={formData.consigneeDistrict}
+                          onChange={handleInputChange}
+                          placeholder="Auto-filled"
+                          className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">State</label>
+                        <input
+                          type="text"
+                          name="consigneeState"
+                          value={formData.consigneeState}
+                          onChange={handleInputChange}
+                          placeholder="Auto-filled"
+                          className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* OCR Upload Section */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-              <div className="flex items-center justify-between mb-3">
-                <label className="font-bold text-[#002d62] flex items-center gap-2">
-                  <Camera className="w-5 h-5" />
-                  Scan Consignee Address with Camera
-                </label>
-                {ocrLoading && (
-                  <div className="text-sm text-[#f7931d] animate-pulse">Processing...</div>
-                )}
               </div>
 
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handleOCRUpload}
-                className="hidden"
-                id="ocr-upload"
-                disabled={ocrLoading}
-                ref={fileInputRef}
-              />
-
-              {!imagePreview ? (
-                <label
-                  htmlFor="ocr-upload"
-                  className={`block w-full py-3 px-4 text-center rounded-lg border-2 border-dashed ${ocrLoading ? 'border-gray-300 bg-gray-100' : 'border-[#f7931d] bg-[#f7931d]/5 hover:bg-[#f7931d]/10 cursor-pointer transition'
-                    }`}
-                >
-                  {ocrLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-[#f7931d] border-t-transparent rounded-full animate-spin"></div>
-                      Scanning Image...
+              {/* RIGHT COLUMN: Logistics & Shipments & Action Buttons */}
+              <div className="lg:col-span-6 space-y-3.5">
+                
+                {/* 3. Logistics & Transit Card */}
+                <div className="bg-white rounded-xl p-3.5 sm:p-4 shadow-sm border border-gray-200">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="p-1.5 bg-[#f7931d]/10 rounded-lg">
+                      <Truck className="w-4 h-4 text-[#f7931d]" />
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center gap-2">
-                      <Camera className="w-5 h-5" />
-                      Tap to Capture Consignee Address
-                    </div>
-                  )}
-                </label>
-              ) : (
-                <div className="space-y-3">
-                  <div className="relative">
-                    <img
-                      src={imagePreview}
-                      alt="Captured"
-                      className="w-full max-h-48 object-contain rounded-lg border border-gray-200"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 transition shadow-lg"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                    <h3 className="text-sm font-bold text-[#002d62]">Logistics & Transit</h3>
                   </div>
-                  {ocrText && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm">
-                      <div className="font-semibold text-green-700 mb-1">Address Detected ✓</div>
-                      <div className="text-gray-700">Name, mobile and pincode auto-filled from image</div>
+
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Origin *</label>
+                        <input
+                          type="text"
+                          name="origin"
+                          value={formData.origin}
+                          onChange={handleInputChange}
+                          placeholder="Origin city"
+                          required
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Destination *</label>
+                        <input
+                          type="text"
+                          name="destination"
+                          value={formData.destination}
+                          onChange={handleInputChange}
+                          placeholder="Destination city"
+                          required
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
                     </div>
-                  )}
-                </div>
-              )}
-            </div>
 
-            {/* Consignee Section - Fill by scanning */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-              <SectionHeader icon={User} title="Consignee Details (Scan or Fill)" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="consigneeName"
-                    value={formData.consigneeName}
-                    onChange={handleInputChange}
-                    placeholder="Enter consignee name"
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <Phone className="w-4 h-4" />
-                    Mobile Number *
-                  </label>
-                  <input
-                    type="tel"
-                    name="consigneeMobile"
-                    value={formData.consigneeMobile}
-                    onChange={handleInputChange}
-                    placeholder="10-digit mobile"
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2 mb-2">
-                    <MapPin className="w-4 h-4" />
-                    Address *
-                  </label>
-                  <textarea
-                    name="consigneeAddress"
-                    value={formData.consigneeAddress}
-                    onChange={handleInputChange}
-                    placeholder="Enter complete address"
-                    rows={3}
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62]">District</label>
-                  <input
-                    type="text"
-                    name="consigneeDistrict"
-                    value={formData.consigneeDistrict}
-                    onChange={handleInputChange}
-                    placeholder="Enter district"
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62]">State</label>
-                  <input
-                    type="text"
-                    name="consigneeState"
-                    value={formData.consigneeState}
-                    onChange={handleInputChange}
-                    placeholder="Enter state"
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62]">Pincode</label>
-                  <input
-                    type="text"
-                    name="consigneePincode"
-                    value={formData.consigneePincode}
-                    onChange={handleInputChange}
-                    placeholder="6-digit pincode"
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Shipment Details */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-              <SectionHeader icon={Truck} title="Shipment Details" />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    Origin *
-                  </label>
-                  <input
-                    type="text"
-                    name="origin"
-                    value={formData.origin}
-                    onChange={handleInputChange}
-                    placeholder="Origin city"
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <MapPin className="w-4 h-4" />
-                    Destination *
-                  </label>
-                  <input
-                    type="text"
-                    name="destination"
-                    value={formData.destination}
-                    onChange={handleInputChange}
-                    placeholder="Destination city"
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <Truck className="w-4 h-4" />
-                    Mode of Transport *
-                  </label>
-                  <select
-                    name="modeOfTransport"
-                    value={formData.modeOfTransport}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  >
-                    <option value="Road">Road</option>
-                    <option value="Air">Air</option>
-                    <option value="Rail">Train</option>
-                    <option value="Sea">Sea</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <Package className="w-4 h-4" />
-                    Shipment Type *
-                  </label>
-                  <select
-                    name="shipmentType"
-                    value={formData.shipmentType}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  >
-                    <option value="DOX">DOX</option>
-                    <option value="Non-DOX">Non-DOX</option>
-                    <option value="Express">Express</option>
-                    <option value="Standard">Standard</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Invoice Required?
-                  </label>
-                  <select
-                    name="invoiceRequired"
-                    value={formData.invoiceRequired}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  >
-                    <option value="No">No</option>
-                    <option value="Yes">Yes</option>
-                  </select>
-                </div>
-                {showInvoiceFields && (
-                  <>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62]">Invoice Number</label>
-                      <input
-                        type="text"
-                        name="invoiceNumber"
-                        value={formData.invoiceNumber}
-                        onChange={handleInputChange}
-                        placeholder="Invoice number"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Mode *</label>
+                        <select
+                          name="modeOfTransport"
+                          value={formData.modeOfTransport}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-2.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900 font-medium"
+                        >
+                          <option value="Road">Road</option>
+                          <option value="Air">Air</option>
+                          <option value="Rail">Train</option>
+                          <option value="Sea">Sea</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Type *</label>
+                        <select
+                          name="shipmentType"
+                          value={formData.shipmentType}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-2.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900 font-medium"
+                        >
+                          <option value="Non-DOX">Non-DOX</option>
+                          <option value="DOX">DOX</option>
+                          <option value="Express">Express</option>
+                          <option value="Standard">Standard</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Invoice?</label>
+                        <select
+                          name="invoiceRequired"
+                          value={formData.invoiceRequired}
+                          onChange={handleInputChange}
+                          className="w-full px-2.5 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900 font-medium"
+                        >
+                          <option value="No">No</option>
+                          <option value="Yes">Yes</option>
+                        </select>
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-sm font-semibold text-[#002d62]">Invoice Value (₹)</label>
-                      <input
-                        type="number"
-                        name="invoiceValue"
-                        value={formData.invoiceValue}
-                        onChange={handleInputChange}
-                        placeholder="0.00"
-                        min="0"
-                        step="0.01"
-                        className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                      />
+
+                    {showInvoiceFields && (
+                      <div className="grid grid-cols-2 gap-2.5 p-2.5 bg-orange-50/50 border border-orange-100 rounded-lg">
+                        <div>
+                          <label className="text-[11px] font-semibold text-[#002d62] block mb-1">Invoice Number</label>
+                          <input
+                            type="text"
+                            name="invoiceNumber"
+                            value={formData.invoiceNumber}
+                            onChange={handleInputChange}
+                            placeholder="INV-1234"
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] font-semibold text-[#002d62] block mb-1">Invoice Value (₹)</label>
+                          <input
+                            type="number"
+                            name="invoiceValue"
+                            value={formData.invoiceValue}
+                            onChange={handleInputChange}
+                            placeholder="0.00"
+                            min="0"
+                            step="0.01"
+                            className="w-full px-3 py-1.5 text-xs bg-white border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-2.5">
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Pickup Date *</label>
+                        <input
+                          type="datetime-local"
+                          name="pickupDate"
+                          value={formData.pickupDate}
+                          onChange={handleInputChange}
+                          required
+                          className="w-full px-2 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Pickup Emp *</label>
+                        <input
+                          type="text"
+                          name="pickupEmployee"
+                          value={formData.pickupEmployee}
+                          onChange={handleInputChange}
+                          placeholder="Emp name"
+                          required
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">E-Way Bill</label>
+                        <input
+                          type="text"
+                          name="ewayBillNo"
+                          value={formData.ewayBillNo}
+                          onChange={handleInputChange}
+                          placeholder="Optional"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900"
+                        />
+                      </div>
                     </div>
-                  </>
-                )}
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Pickup Date & Time *
-                  </label>
-                  <input
-                    type="datetime-local"
-                    name="pickupDate"
-                    value={formData.pickupDate}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62] flex items-center gap-2">
-                    <User className="w-4 h-4" />
-                    Pickup Employee *
-                  </label>
-                  <input
-                    type="text"
-                    name="pickupEmployee"
-                    value={formData.pickupEmployee}
-                    onChange={handleInputChange}
-                    placeholder="Employee name/code"
-                    required
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-[#002d62]">E-Way Bill No.</label>
-                  <input
-                    type="text"
-                    name="ewayBillNo"
-                    value={formData.ewayBillNo}
-                    onChange={handleInputChange}
-                    placeholder="E-way bill number"
-                    className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] focus:ring-2 focus:ring-orange-100 text-gray-900"
-                  />
-                </div>
-              </div>
-            </div>
 
-            {/* Shipments Section */}
-            <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-              <SectionHeader icon={Package} title="Add Shipments" />
+                {/* 4. Packages / Shipments Card with Integrated Actions */}
+                <div className="bg-white rounded-xl p-3.5 sm:p-4 shadow-sm border border-gray-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-[#f7931d]/10 rounded-lg">
+                        <Package className="w-4 h-4 text-[#f7931d]" />
+                      </div>
+                      <h3 className="text-sm font-bold text-[#002d62]">Shipments / Boxes *</h3>
+                    </div>
+                    {shipments.length > 0 && (
+                      <span className="text-xs px-2.5 py-0.5 bg-blue-50 text-blue-800 font-bold rounded-full border border-blue-200">
+                        {shipments.reduce((sum, s) => sum + (Number(s.noOfBox) || 1), 0)} Box | {shipments.reduce((sum, s) => sum + (Number(s.actualWeight) || 0) * (Number(s.noOfBox) || 1), 0).toFixed(1)} kg
+                      </span>
+                    )}
+                  </div>
 
-              {shipments.length > 0 && (
-                <div className="mb-6 space-y-3">
-                  {shipments.map((shipment) => (
-                    <div key={shipment.id} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="font-semibold text-[#002d62]">{BOX_TYPES[shipment.boxType].label}</div>
+                  {/* Add box inputs */}
+                  <div className="p-2.5 bg-gray-50 border border-gray-200 rounded-lg space-y-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Box Type</label>
+                        <select
+                          value={shipmentForm.boxType}
+                          onChange={(e) => handleBoxTypeChange(e.target.value as BoxType)}
+                          className="w-full px-2.5 py-2 text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d]"
+                        >
+                          {Object.entries(BOX_TYPES).map(([key, { label }]) => (
+                            <option key={key} value={key}>{label}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Weight (kg) *</label>
+                        <input
+                          type="number"
+                          value={shipmentForm.actualWeight}
+                          onChange={(e) => setShipmentForm({ ...shipmentForm, actualWeight: e.target.value })}
+                          placeholder="0.00"
+                          min="0"
+                          step="0.01"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d]"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-semibold text-[#002d62] block mb-1">Quantity *</label>
+                        <input
+                          type="number"
+                          value={shipmentForm.noOfBox}
+                          onChange={(e) => setShipmentForm({ ...shipmentForm, noOfBox: e.target.value })}
+                          placeholder="1"
+                          min="1"
+                          className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d]"
+                        />
+                      </div>
+
+                      <div className="col-span-2 sm:col-span-1 flex items-end">
                         <button
                           type="button"
-                          onClick={() => removeShipment(shipment.id)}
-                          className="p-1 hover:bg-red-100 rounded transition"
+                          onClick={addShipment}
+                          className="w-full py-2 px-3 bg-[#002d62] text-white text-xs font-bold rounded-lg hover:bg-[#00448c] transition flex items-center justify-center gap-1 shadow-sm"
                         >
-                          <X className="w-4 h-4 text-red-500" />
+                          <Plus className="w-4 h-4" />
+                          <span>Add Box</span>
                         </button>
                       </div>
-                      <div className="grid grid-cols-3 gap-4 text-sm text-gray-600">
-                        <div className="flex flex-col">
-                          <span className="font-medium">Weight</span>
-                          <span className="text-[#002d62] font-semibold">{shipment.actualWeight} kg</span>
+                    </div>
+
+                    {shipmentForm.boxType === 'Other' && (
+                      <div className="grid grid-cols-3 gap-2.5 pt-1.5 border-t border-gray-200">
+                        <div>
+                          <label className="text-[11px] text-gray-600 block mb-0.5">Length (cm)</label>
+                          <input
+                            type="number"
+                            value={shipmentForm.length || ''}
+                            onChange={(e) => setShipmentForm({ ...shipmentForm, length: parseFloat(e.target.value) || 0 })}
+                            placeholder="L"
+                            className="w-full px-2.5 py-1 text-xs bg-white border border-gray-300 rounded"
+                          />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-medium">Dimensions</span>
-                          <span className="text-[#002d62] font-semibold">{shipment.length} x {shipment.width} x {shipment.height}</span>
+                        <div>
+                          <label className="text-[11px] text-gray-600 block mb-0.5">Width (cm)</label>
+                          <input
+                            type="number"
+                            value={shipmentForm.width || ''}
+                            onChange={(e) => setShipmentForm({ ...shipmentForm, width: parseFloat(e.target.value) || 0 })}
+                            placeholder="W"
+                            className="w-full px-2.5 py-1 text-xs bg-white border border-gray-300 rounded"
+                          />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="font-medium">Quantity</span>
-                          <span className="text-[#002d62] font-semibold">{shipment.noOfBox}</span>
+                        <div>
+                          <label className="text-[11px] text-gray-600 block mb-0.5">Height (cm)</label>
+                          <input
+                            type="number"
+                            value={shipmentForm.height || ''}
+                            onChange={(e) => setShipmentForm({ ...shipmentForm, height: parseFloat(e.target.value) || 0 })}
+                            placeholder="H"
+                            className="w-full px-2.5 py-1 text-xs bg-white border border-gray-300 rounded"
+                          />
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#002d62]">Box Type *</label>
-                    <select
-                      value={shipmentForm.boxType}
-                      onChange={(e) => handleBoxTypeChange(e.target.value as BoxType)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
-                    >
-                      {Object.entries(BOX_TYPES).map(([key, { label }]) => (
-                        <option key={key} value={key}>{label}</option>
-                      ))}
-                    </select>
+                    )}
                   </div>
 
-                  {shipmentForm.boxType === 'Other' && (
-                    <>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-[#002d62]">Length (cm) *</label>
-                        <input
-                          type="number"
-                          value={shipmentForm.length || ''}
-                          onChange={(e) => setShipmentForm({ ...shipmentForm, length: parseFloat(e.target.value) || 0 })}
-                          placeholder="Length"
-                          min="1"
-                          step="0.1"
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-[#002d62]">Width (cm) *</label>
-                        <input
-                          type="number"
-                          value={shipmentForm.width || ''}
-                          onChange={(e) => setShipmentForm({ ...shipmentForm, width: parseFloat(e.target.value) || 0 })}
-                          placeholder="Width"
-                          min="1"
-                          step="0.1"
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-[#002d62]">Height (cm) *</label>
-                        <input
-                          type="number"
-                          value={shipmentForm.height || ''}
-                          onChange={(e) => setShipmentForm({ ...shipmentForm, height: parseFloat(e.target.value) || 0 })}
-                          placeholder="Height"
-                          min="1"
-                          step="0.1"
-                          className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
-                        />
-                      </div>
-                    </>
+                  {/* Added boxes list */}
+                  {shipments.length > 0 ? (
+                    <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                      {shipments.map((s, idx) => (
+                        <div key={s.id} className="flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-4 h-4 flex items-center justify-center bg-white font-bold rounded-full text-[10px] text-[#002d62] border">
+                              {idx + 1}
+                            </span>
+                            <span className="font-semibold text-gray-800">{BOX_TYPES[s.boxType].label}</span>
+                            <span className="text-gray-500 text-[11px]">({s.length}×{s.width}×{s.height})</span>
+                          </div>
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-bold text-[#002d62]">{s.actualWeight} kg × {s.noOfBox}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeShipment(s.id)}
+                              className="text-red-400 hover:text-red-600 p-0.5"
+                              title="Delete"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="py-2 text-center text-xs text-gray-400 border border-dashed border-gray-200 rounded-lg">
+                      Add at least 1 box above
+                    </div>
                   )}
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#002d62]">Weight (kg) *</label>
-                    <input
-                      type="number"
-                      value={shipmentForm.actualWeight}
-                      onChange={(e) => setShipmentForm({ ...shipmentForm, actualWeight: e.target.value })}
-                      placeholder="0.00"
-                      min="0"
-                      step="0.01"
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-[#002d62]">Quantity *</label>
-                    <input
-                      type="number"
-                      value={shipmentForm.noOfBox}
-                      onChange={(e) => setShipmentForm({ ...shipmentForm, noOfBox: e.target.value })}
-                      placeholder="1"
-                      min="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-[#f7931d]"
-                    />
+                  {/* Action Buttons Directly Inside Right Panel */}
+                  <div className="pt-2 border-t border-gray-100 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPreview(true)}
+                      className="flex-1 py-2.5 px-3 bg-white border border-[#002d62] text-[#002d62] text-xs sm:text-sm font-bold rounded-lg hover:bg-gray-50 transition flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span>Preview</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      disabled={loading}
+                      className="py-2.5 px-3.5 bg-gray-100 border border-gray-300 text-gray-700 text-xs sm:text-sm font-semibold rounded-lg hover:bg-gray-200 transition disabled:opacity-50 flex items-center justify-center gap-1 shadow-sm"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Reset</span>
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="flex-[2] py-2.5 px-4 bg-gradient-to-r from-[#f7931d] to-[#e67e22] text-white text-xs sm:text-sm font-bold rounded-lg hover:shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      {loading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Creating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Create Docket</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={addShipment}
-                  className="w-full md:w-auto px-6 py-3 bg-[#002d62] text-white rounded-lg font-semibold hover:bg-[#00448c] transition flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-5 h-5" />
-                  Add Shipment
-                </button>
               </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="sticky bottom-0 bg-gradient-to-t from-white to-transparent pt-4 pb-6">
-              <div className="flex flex-col md:flex-row gap-2 md:gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowPreview(true)}
-                  className="w-full md:flex-1 bg-white border-2 border-[#002d62] text-[#002d62] py-2.5 md:py-3 rounded-lg font-semibold hover:bg-gray-50 transition flex items-center justify-center gap-2 text-sm md:text-base"
-                >
-                  <Eye className="w-4 h-4 md:w-5 md:h-5" />
-                  Preview
-                </button>
-                <div className="flex gap-2 w-full md:flex-1">
-                  <button
-                    type="button"
-                    onClick={handleReset}
-                    disabled={loading}
-                    className="flex-1 bg-gray-100 border border-gray-300 text-gray-700 py-2.5 md:py-3 rounded-lg font-semibold hover:bg-gray-200 transition disabled:opacity-70 flex items-center justify-center gap-2 text-sm md:text-base"
-                  >
-                    <RefreshCw className="w-4 h-4 md:w-5 md:h-5" />
-                    <span className="hidden xs:inline">Reset</span>
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex-1 bg-gradient-to-r from-[#f7931d] to-[#e67e22] text-white py-2.5 md:py-3 rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-70 flex items-center justify-center gap-2 text-sm md:text-base"
-                  >
-                    {loading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span className="hidden xs:inline">Processing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4 md:w-5 md:h-5" />
-                        <span className="hidden xs:inline">Submit</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
             </div>
           </form>
 
