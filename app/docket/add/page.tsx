@@ -583,14 +583,14 @@ export default function AddDocketPage() {
 
     // Validate consignor based on selection
     if (selectedConsignor === 'manual') {
-      const requiredConsignorFields = ['ConsignorName', 'ConsignorMobile', 'ConsignorAddress', 'ConsignorPincode'];
+      const requiredConsignorFields = ['ConsignorName', 'ConsignorMobile', 'ConsignorAddress'];
       for (const field of requiredConsignorFields) {
         if (!manualConsignor[field as keyof ConsignorData]?.trim()) {
           setError(`Consignor ${field.replace('Consignor', '')} is required for manual entry`);
           return;
         }
       }
-      if (!/^\d{6}$/.test(manualConsignor.ConsignorPincode.trim())) {
+      if (manualConsignor.ConsignorPincode?.trim() && !/^\d{6}$/.test(manualConsignor.ConsignorPincode.trim())) {
         setError('Consignor Pincode must be a valid 6-digit number');
         return;
       }
@@ -1044,7 +1044,7 @@ export default function AddDocketPage() {
                       <div className="grid grid-cols-3 gap-2.5">
                         <div>
                           <label className="text-xs font-semibold text-[#002d62] flex items-center justify-between mb-1">
-                            <span>Pincode <span className="text-red-500">*</span></span>
+                            <span>Pincode</span>
                             {loadingConsignorPin && <span className="text-[10px] text-orange-500 animate-pulse font-normal">...</span>}
                           </label>
                           <input
@@ -1052,9 +1052,8 @@ export default function AddDocketPage() {
                             name="ConsignorPincode"
                             value={manualConsignor.ConsignorPincode}
                             onChange={handleManualConsignorChange}
-                            placeholder="6-digit"
+                            placeholder="6-digit (optional)"
                             maxLength={6}
-                            required
                             className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg focus:outline-none focus:border-[#f7931d] text-gray-900 font-medium"
                           />
                         </div>
